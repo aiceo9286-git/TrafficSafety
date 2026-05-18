@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout 
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000">
+
+    <!-- 相機預覽 -->
+    <androidx.camera.view.PreviewView
+        android:id="@+id/previewView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- 偵測結果覆蓋繪製層 -->
+    <com.sharn.pedestriansafety.OverlayView
+        android:id="@+id/overlayView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- 頂部狀態欄 -->
+    <LinearLayout
+        android:id="@+id/statusBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="16dp"
+        android:background="#AA000000"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <TextView
+            android:id="@+id/tvStatus"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="安全偵測啟動中..."
+            android:textColor="#4CAF50"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <ImageButton
+            android:id="@+id/btnSettings"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_menu_preferences"
+            android:contentDescription="設定" />
+
+    </LinearLayout>
+
+    <!-- 底部控制面板 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:background="#AA000000"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <!-- 靈認度閥值調整 -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="靈認度閥值"
+            android:textColor="#FFF"
+            android:textSize="14sp" />
+
+        <SeekBar
+            android:id="@+id/seekBarThreshold"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="100"
+            android:progress="50" />
+
+        <!-- 偵測類型開關 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="8dp">
+
+            <CheckBox
+                android:id="@+id/cbPedestrian"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="行人"
+                android:textColor="#FFF"
+                android:checked="true" />
+
+            <CheckBox
+                android:id="@+id/cbTrafficLight"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="號誌"
+                android:textColor="#FFF"
+                android:checked="true"
+                android:layout_marginStart="16dp" />
+
+            <CheckBox
+                android:id="@+id/cbSoundAlert"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="音效"
+                android:textColor="#FFF"
+                android:checked="true"
+                android:layout_marginStart="16dp" />
+
+            <CheckBox
+                android:id="@+id/cbVoiceAlert"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="語音"
+                android:textColor="#FFF"
+                android:checked="true"
+                android:layout_marginStart="16dp" />
+
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tvDetections"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="偵測到: -"
+            android:textColor="#FFF"
+            android:textSize="14sp" />
+
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>
