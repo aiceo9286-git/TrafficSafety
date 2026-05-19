@@ -7,11 +7,12 @@
     android:layout_height="match_parent"
     android:background="#000">
 
-    <!-- 相機預覽 -->
+    <!-- 相機預覽 -放大顯示 -->
     <androidx.camera.view.PreviewView
         android:id="@+id/previewView"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"/>
 
     <!-- 偵測結果覆蓋繪製層 -->
     <com.sharn.pedestriansafety.OverlayView

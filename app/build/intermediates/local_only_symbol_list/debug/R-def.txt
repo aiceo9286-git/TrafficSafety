@@ -1,0 +1,22 @@
+R_DEF: Internal format may change without notice
+local
+id btnSettings
+id cbPedestrian
+id cbSoundAlert
+id cbTrafficLight
+id cbVoiceAlert
+id overlayView
+id previewView
+id seekBarThreshold
+id statusBar
+id tvDetections
+id tvStatus
+layout activity_main
+mipmap ic_launcher
+mipmap ic_launcher_round
+string app_name
+string monitoring
+string pedestrian_detected
+string traffic_light_green
+string traffic_light_red
+string traffic_light_yellow

@@ -135,13 +135,15 @@ public class MainActivity extends AppCompatActivity {
     }
     
     private void bindCameraUseCases(ProcessCameraProvider cameraProvider) {
-        // Preview
-        Preview preview = new Preview.Builder().build();
+        // Preview - 使用高解析度預覽
+        Preview preview = new Preview.Builder()
+            .setTargetResolution(new Size(1280, 720))
+            .build();
         preview.setSurfaceProvider(previewView.getSurfaceProvider());
         
-        // Image Analysis
+        // Image Analysis - 提高解析度以獲得更好辨識效果
         ImageAnalysis imageAnalysis = new ImageAnalysis.Builder()
-            .setTargetResolution(new Size(640, 480))
+            .setTargetResolution(new Size(1280, 720))
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .build();
         
@@ -156,7 +158,7 @@ public class MainActivity extends AppCompatActivity {
             cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageAnalysis);
             
             // Init detector after camera is ready
-            objectDetector = new ObjectDetector(this);
+            objectDetector = new ObjectDetectorWrapper(this);
             updateStatus("偵測系統就緒", 0xFF4CAF50);
             
         } catch (Exception e) {
@@ -186,12 +188,24 @@ public class MainActivity extends AppCompatActivity {
                 bitmap.getWidth(), bitmap.getHeight(), matrix, true);
         }
         
+        // 裁剪畫面中央區域並放大 (模擬數位變焦效果)
+        int cropWidth = (int)(bitmap.getWidth() * 0.6);  // 裁剪 60% 寬度
+        int cropHeight = (int)(bitmap.getHeight() * 0.6); // 裁剪 60% 高度
+        int cropX = (bitmap.getWidth() - cropWidth) / 2;    // 中央開始
+        int cropY = (bitmap.getHeight() - cropHeight) / 2;
+        
+        // 裁剪中央區域
+        Bitmap cropped = Bitmap.createBitmap(bitmap, cropX, cropY, cropWidth, cropHeight);
+        
+        // 放大回原尺寸以獲得更好辨識細節
+        bitmap = Bitmap.createScaledBitmap(cropped, bitmap.getWidth(), bitmap.getHeight(), true);
+        
         // Run detection
-        List<ObjectDetector.DetectionResult> results = objectDetector.detect(bitmap);
+        List<DetectionResult> results = objectDetector.detect(bitmap);
         
         // Filter results based on user selection
-        List<ObjectDetector.DetectionResult> filtered = new ArrayList<>();
-        for (ObjectDetector.DetectionResult r : results) {
+        List<DetectionResult> filtered = new ArrayList<>();
+        for (DetectionResult r : results) {
             if (r.isPedestrian() && cbPedestrian.isChecked()) {
                 filtered.add(r);
             } else if (r.isTrafficLight() && cbTrafficLight.isChecked()) {
@@ -214,7 +228,7 @@ public class MainActivity extends AppCompatActivity {
         imageProxy.close();
     }
     
-    private void onAlertTriggered(ObjectDetector.DetectionResult detection) {
+    private void onAlertTriggered(DetectionResult detection) {
         runOnUiThread(() -> {
             updateStatus("警告！檢測到 " + detection.getLabel(), 0xFFFF5722);
             

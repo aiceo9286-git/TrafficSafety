@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">行人安全助手</string>
+    <string name="app_name">汽車安全助理</string>
     <string name="pedestrian_detected">注意！前方有行人</string>
     <string name="traffic_light_red">紅燈！請停車</string>
     <string name="traffic_light_yellow">黃燈！注意</string>
