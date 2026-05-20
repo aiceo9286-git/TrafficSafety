@@ -21,10 +21,13 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.camera.core.Camera;
+import androidx.camera.core.CameraControl;
 import androidx.camera.core.CameraSelector;
 import androidx.camera.core.ImageAnalysis;
 import androidx.camera.core.ImageProxy;
 import androidx.camera.core.Preview;
+import androidx.camera.core.ZoomState;
 import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.camera.view.PreviewView;
 import androidx.core.app.ActivityCompat;
@@ -180,13 +183,14 @@ public class MainActivity extends AppCompatActivity {
     }
     
     private void bindCameraUseCases(ProcessCameraProvider cameraProvider) {
+        // v2.2: 提高相機解析度至 1920x1080，並設定 1.5x 光學/數位變焦
         Preview preview = new Preview.Builder()
-            .setTargetResolution(new Size(1280, 720))
+            .setTargetResolution(new Size(1920, 1080))  // 從 1280x720 提升至 1080p
             .build();
         preview.setSurfaceProvider(previewView.getSurfaceProvider());
         
         ImageAnalysis imageAnalysis = new ImageAnalysis.Builder()
-            .setTargetResolution(new Size(1280, 720))
+            .setTargetResolution(new Size(1920, 1080))  // 同步提升分析解析度
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .build();
         
@@ -196,7 +200,17 @@ public class MainActivity extends AppCompatActivity {
         
         try {
             cameraProvider.unbindAll();
-            cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageAnalysis);
+            Camera camera = cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageAnalysis);
+            
+            // v2.2: 設定 1.5x 變焦（放大畫面）
+            CameraControl cameraControl = camera.getCameraControl();
+            ZoomState currentZoom = camera.getCameraInfo().getZoomState().getValue();
+            if (currentZoom != null) {
+                float maxZoom = currentZoom.getMaxZoomRatio();
+                float targetZoom = Math.min(1.5f, maxZoom);  // 設定 1.5x 或最大可用變焦
+                cameraControl.setZoomRatio(targetZoom);
+                Log.d(TAG, "Camera zoom set to: " + targetZoom + "x");
+            }
             
             objectDetector = new ObjectDetectorWrapper(this);
             updateStatus("系統就緒", 0xFF4CAF50, "--", "--");
@@ -229,10 +243,25 @@ public class MainActivity extends AppCompatActivity {
                 bitmap.getWidth(), bitmap.getHeight(), matrix, true);
         }
         
+        // v2.1: 數位變焦（放大畫面中央的60%，專注於車前方）
+        float zoomRatio = 0.6f;  // 改為0.6表示放大中央60%的區域，移除較多背景
+        int cropWidth = (int)(bitmap.getWidth() * zoomRatio);
+        int cropHeight = (int)(bitmap.getHeight() * zoomRatio);
+        int cropX = (bitmap.getWidth() - cropWidth) / 2;  // 從中央開始裁剪
+        int cropY = (int)(bitmap.getHeight() * 0.3f);     // 從上往下30%處開始（聚焦路面）
+        
+        // 確保不超出邊界
+        cropX = Math.max(0, cropX);
+        cropY = Math.max(0, Math.min(cropY, bitmap.getHeight() - cropHeight));
+        
+        // 裁剪並放大回原尺寸
+        Bitmap cropped = Bitmap.createBitmap(bitmap, cropX, cropY, cropWidth, cropHeight);
+        bitmap = Bitmap.createScaledBitmap(cropped, bitmap.getWidth(), bitmap.getHeight(), true);
+        
         final int imgWidth = bitmap.getWidth();
         final int imgHeight = bitmap.getHeight();
         
-        // 原始偵測
+        // 原始偵測（現在是放大的畫面）
         List<DetectionResult> rawResults = objectDetector.detect(bitmap);
         
         // 用戶選擇過濾
