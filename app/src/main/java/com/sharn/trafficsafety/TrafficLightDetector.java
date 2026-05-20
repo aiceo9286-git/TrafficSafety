@@ -2,18 +2,9 @@ package com.sharn.trafficsafety;
 
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.Rect;
 import android.graphics.RectF;
 import android.util.Log;
-
-import org.opencv.android.Utils;
-import org.opencv.core.Core;
-import org.opencv.core.CvType;
-import org.opencv.core.Mat;
-import org.opencv.core.MatOfPoint;
-import org.opencv.core.Rect;
-import org.opencv.core.Scalar;
-import org.opencv.core.Size;
-import org.opencv.imgproc.Imgproc;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -21,25 +12,11 @@ import java.util.List;
 
 /**
  * v2.3: 專用紅綠燈偵測器
- * 兩步驟法：Step 1 定位紅綠燈位置 → Step 2 識別燈號狀態
- * 解決 YOLO classification-only 的問題
+ * 使用純 Java HSV 色彩分析，無需 OpenCV
+ * 兩步驟法：先定位 → 再識別
  */
 public class TrafficLightDetector {
     private static final String TAG = "TrafficLightDetector";
-    
-    // HSV 顏色範圍 - 用於偵測紅綠燈外框和燈號
-    private final Scalar RED_LOWER1 = new Scalar(0, 100, 100);
-    private final Scalar RED_UPPER1 = new Scalar(10, 255, 255);
-    private final Scalar RED_LOWER2 = new Scalar(160, 100, 100);
-    private final Scalar RED_UPPER2 = new Scalar(180, 255, 255);
-    private final Scalar YELLOW_LOWER = new Scalar(15, 100, 100);
-    private final Scalar YELLOW_UPPER = new Scalar(35, 255, 255);
-    private final Scalar GREEN_LOWER = new Scalar(40, 80, 80);
-    private final Scalar GREEN_UPPER = new Scalar(90, 255, 255);
-    
-    // 燈號外框顏色（通常為黑色或深色）
-    private final Scalar DARK_LOWER = new Scalar(0, 0, 0);
-    private final Scalar DARK_UPPER = new Scalar(180, 255, 60);
     
     // 燈號狀態
     public enum LightState {
@@ -48,11 +25,11 @@ public class TrafficLightDetector {
     
     public static class TrafficLightResult {
         public RectF boundingBox;      // 正規化座標 [0,1]
-        public Rect pixelBox;            // 像素座標
-        public LightState state;         // 燈號狀態
-        public float confidence;         // 信心度
-        public float centerX, centerY;   // 中心點
-        public boolean isLit;            // 是否亮燈
+        public Rect pixelBox;          // 像素座標
+        public LightState state;       // 燈號狀態
+        public float confidence;       // 信心度
+        public float centerX, centerY; // 中心點
+        public boolean isLit;          // 是否亮燈
         
         public TrafficLightResult(RectF box, Rect pixelBox, LightState state, float conf, boolean isLit) {
             this.boundingBox = box;
@@ -76,36 +53,25 @@ public class TrafficLightDetector {
     }
     
     /**
-     * 主要偵測入口 - 兩步驟流程
+     * 主要偵測入口
      */
     public List<TrafficLightResult> detect(Bitmap bitmap) {
         List<TrafficLightResult> results = new ArrayList<>();
         
         try {
-            // Step 1: 轉換到 HSV 色彩空間
-            Mat src = new Mat();
-            Utils.bitmapToMat(bitmap, src);
+            // Step 1: 定位潛在的燈號區域（快速掃描）
+            List<CandidateRegion> candidates = locateCandidateRegions(bitmap);
             
-            Mat hsv = new Mat();
-            Imgproc.cvtColor(src, hsv, Imgproc.COLOR_RGB2HSV);
-            
-            // Step 2: 定位紅綠燈外框（尋找潛在的紅綠燈位置）
-            List<TrafficLightCandidate> candidates = locateTrafficLights(src, hsv);
-            
-            // Step 3: 對每個候選區域識別燈號狀態
-            for (TrafficLightCandidate candidate : candidates) {
-                TrafficLightResult result = recognizeLightState(src, hsv, candidate);
-                if (result != null && result.confidence > 0.5f) {
+            // Step 2: 對每個候選區域進行顏色分析
+            for (CandidateRegion candidate : candidates) {
+                TrafficLightResult result = analyzeRegion(bitmap, candidate);
+                if (result != null && result.confidence > 0.3f) {
                     results.add(result);
                 }
             }
             
-            // Step 4: NMS 去重
+            // Step 3: NMS 去重
             results = applyNMS(results, 0.5f);
-            
-            // 釋放記憶體
-            src.release();
-            hsv.release();
             
             Log.d(TAG, "Detected " + results.size() + " traffic lights");
             
@@ -117,228 +83,279 @@ public class TrafficLightDetector {
     }
     
     /**
-     * Step 1: 定位紅綠燈位置
-     * 尋找畫面中可能是紅綠燈的區域
+     * Step 1: 定位候選區域
+     * 掃描畫面，尋找具有紅/黃/綠色的區域
      */
-    private List<TrafficLightCandidate> locateTrafficLights(Mat src, Mat hsv) {
-        List<TrafficLightCandidate> candidates = new ArrayList<>();
+    private List<CandidateRegion> locateCandidateRegions(Bitmap bitmap) {
+        List<CandidateRegion> candidates = new ArrayList<>();
         
-        // 策略1: 尋找紅色燈號（最明顯）
-        candidates.addAll(findColorLights(src, hsv, RED_LOWER1, RED_UPPER1, RED_LOWER2, RED_UPPER2));
+        int width = bitmap.getWidth();
+        int height = bitmap.getHeight();
         
-        // 策略2: 尋找綠色燈號
-        candidates.addAll(findColorLights(src, hsv, GREEN_LOWER, GREEN_UPPER, null, null));
+        // 使用網格掃描，避免逐像素處理
+        int gridSize = 20; // 每 20x20 像素掃描一次
+        int minRegionSize = 30;
+        int maxRegionSize = Math.min(width, height) / 3;
         
-        // 策略3: 尋找黃色燈號
-        candidates.addAll(findColorLights(src, hsv, YELLOW_LOWER, YELLOW_UPPER, null, null));
-        
-        // 策略4: 尋找直立黑框（紅綠燈外殼）
-        candidates.addAll(findDarkHousings(src, hsv));
-        
-        return candidates;
-    }
-    
-    /**
-     * 尋找特定顏色的燈號
-     */
-    private List<TrafficLightCandidate> findColorLights(Mat src, Mat hsv, 
-                                                         Scalar lower1, Scalar upper1,
-                                                         Scalar lower2, Scalar upper2) {
-        List<TrafficLightCandidate> candidates = new ArrayList<>();
-        
-        // 建立顏色遮罩
-        Mat mask = new Mat();
-        if (lower2 != null && upper2 != null) {
-            Mat mask1 = new Mat();
-            Mat mask2 = new Mat();
-            Core.inRange(hsv, lower1, upper1, mask1);
-            Core.inRange(hsv, lower2, upper2, mask2);
-            Core.bitwise_or(mask1, mask2, mask);
-            mask1.release();
-            mask2.release();
-        } else {
-            Core.inRange(hsv, lower1, upper1, mask);
-        }
-        
-        // 形態學操作
-        Mat kernel = Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, new Size(7, 7));
-        Imgproc.morphologyEx(mask, mask, Imgproc.MORPH_CLOSE, kernel);
-        Imgproc.morphologyEx(mask, mask, Imgproc.MORPH_OPEN, kernel, new Point(-1, -1), 1);
-        
-        // 尋找輪廓
-        List<MatOfPoint> contours = new ArrayList<>();
-        Mat hierarchy = new Mat();
-        Imgproc.findContours(mask, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
-        
-        for (MatOfPoint contour : contours) {
-            Rect rect = Imgproc.boundingRect(contour);
-            double area = Imgproc.contourArea(contour);
-            
-            // 過濾條件：面積和長寬比
-            if (area < 200) continue;
-            if (area > src.width() * src.height() * 0.05) continue;
-            
-            float aspectRatio = (float) rect.width / rect.height;
-            
-            // 紅綠燈特徵：直立長方形或圓形
-            if ((aspectRatio > 0.2f && aspectRatio < 0.8f) ||  // 直立長方形
-                (aspectRatio > 0.7f && aspectRatio < 1.3f)) {  // 圓形單燈
+        // 尋找具有鮮豔顏色的區塊
+        for (int y = 0; y < height - gridSize; y += gridSize) {
+            for (int x = 0; x < width - gridSize; x += gridSize) {
+                // 採樣中心點
+                int cx = x + gridSize / 2;
+                int cy = y + gridSize / 2;
                 
-                candidates.add(new TrafficLightCandidate(rect, area));
+                ColorPoint point = analyzePoint(bitmap, cx, cy);
+                
+                if (point.isTrafficLightColor && point.saturation > 0.5f) {
+                    // 找到潛在的燈號區域
+                    CandidateRegion candidate = new CandidateRegion(
+                        cx - minRegionSize/2, cy - minRegionSize,
+                        minRegionSize, minRegionSize * 2,
+                        point.colorType
+                    );
+                    
+                    // 調整區域大小
+                    candidate = expandRegion(bitmap, candidate, point.colorType);
+                    
+                    if (candidate.width > 20 && candidate.height > 40) {
+                        candidates.add(candidate);
+                    }
+                }
             }
         }
         
-        // 釋放記憶體
-        mask.release();
-        kernel.release();
-        hierarchy.release();
-        
-        return candidates;
+        return mergeNearbyCandidates(candidates);
     }
     
     /**
-     * 尋找深色外框（紅綠燈外殼）
+     * 分析單一像素點
      */
-    private List<TrafficLightCandidate> findDarkHousings(Mat src, Mat hsv) {
-        List<TrafficLightCandidate> candidates = new ArrayList<>();
+    private ColorPoint analyzePoint(Bitmap bitmap, int x, int y) {
+        int pixel = bitmap.getPixel(x, y);
         
-        // 偵測深色區域
-        Mat darkMask = new Mat();
-        Core.inRange(hsv, DARK_LOWER, DARK_UPPER, darkMask);
+        int r = Color.red(pixel);
+        int g = Color.green(pixel);
+        int b = Color.blue(pixel);
         
-        // 形態學操作
-        Mat kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(5, 15));
-        Imgproc.morphologyEx(darkMask, darkMask, Imgproc.MORPH_CLOSE, kernel);
+        // 轉換到 HSV
+        float[] hsv = new float[3];
+        Color.RGBToHSV(r, g, b, hsv);
         
-        // 尋找輪廓
-        List<MatOfPoint> contours = new ArrayList<>();
-        Mat hierarchy = new Mat();
-        Imgproc.findContours(darkMask, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
+        float h = hsv[0];
+        float s = hsv[1];
+        float v = hsv[2];
         
-        for (MatOfPoint contour : contours) {
-            Rect rect = Imgproc.boundingRect(contour);
-            double area = Imgproc.contourArea(contour);
-            
-            if (area < 500) continue;
-            if (area > src.width() * src.height() * 0.1) continue;
-            
-            float aspectRatio = (float) rect.width / rect.height;
-            
-            // 直立長方形（典型紅綠燈外殼）
-            if (aspectRatio > 0.25f && aspectRatio < 0.7f && rect.height > rect.width * 2) {
-                candidates.add(new TrafficLightCandidate(rect, area * 0.8)); // 稍低優先級
+        ColorPoint point = new ColorPoint();
+        point.saturation = s;
+        point.value = v;
+        
+        // 判斷顏色類型
+        if (s > 0.3f && v > 0.3f) {
+            if ((h >= 0 && h < 20) || (h >= 340 && h <= 360)) {
+                point.colorType = ColorType.RED;
+                point.isTrafficLightColor = true;
+            } else if (h >= 40 && h < 80) {
+                point.colorType = ColorType.GREEN;
+                point.isTrafficLightColor = true;
+            } else if (h >= 20 && h < 40) {
+                point.colorType = ColorType.YELLOW;
+                point.isTrafficLightColor = true;
             }
         }
         
-        darkMask.release();
-        kernel.release();
-        hierarchy.release();
-        
-        return candidates;
+        return point;
     }
     
     /**
-     * Step 2: 識別燈號狀態
-     * 對已定位的區域進行紅/黃/綠燈識別
+     * 擴展區域以包含完整的燈號
      */
-    private TrafficLightResult recognizeLightState(Mat src, Mat hsv, TrafficLightCandidate candidate) {
-        Rect region = candidate.rect;
+    private CandidateRegion expandRegion(Bitmap bitmap, CandidateRegion seed, ColorType targetColor) {
+        int x = seed.x;
+        int y = seed.y;
+        int w = seed.width;
+        int h = seed.height;
         
-        // 計算區域內各顏色強度
-        ColorIntensity intensity = analyzeRegionColors(hsv, region);
+        // 向外搜索相同顏色的像素
+        boolean expanded = true;
+        int maxIterations = 50;
+        int iterations = 0;
         
-        // 判斷燈號狀態
+        while (expanded && iterations < maxIterations) {
+            expanded = false;
+            iterations++;
+            
+            // 向上擴展
+            if (y > 0 && hasColorInRow(bitmap, x, y - 1, w, targetColor)) {
+                y--;
+                h++;
+                expanded = true;
+            }
+            // 向下擴展
+            if (y + h < bitmap.getHeight() && hasColorInRow(bitmap, x, y + h, w, targetColor)) {
+                h++;
+                expanded = true;
+            }
+            // 向左擴展
+            if (x > 0 && hasColorInColumn(bitmap, x - 1, y, h, targetColor)) {
+                x--;
+                w++;
+                expanded = true;
+            }
+            // 向右擴展
+            if (x + w < bitmap.getWidth() && hasColorInColumn(bitmap, x + w, y, h, targetColor)) {
+                w++;
+                expanded = true;
+            }
+        }
+        
+        return new CandidateRegion(x, y, w, h, targetColor);
+    }
+    
+    /**
+     * 檢查行是否存在目標顏色
+     */
+    private boolean hasColorInRow(Bitmap bitmap, int x, int y, int width, ColorType targetColor) {
+        for (int i = x; i < Math.min(x + width, bitmap.getWidth()); i++) {
+            ColorPoint point = analyzePoint(bitmap, i, y);
+            if (point.colorType == targetColor && point.saturation > 0.3f) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    /**
+     * 檢查列是否存在目標顏色
+     */
+    private boolean hasColorInColumn(Bitmap bitmap, int x, int y, int height, ColorType targetColor) {
+        for (int i = y; i < Math.min(y + height, bitmap.getHeight()); i++) {
+            ColorPoint point = analyzePoint(bitmap, x, i);
+            if (point.colorType == targetColor && point.saturation > 0.3f) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    /**
+     * Step 2: 分析區域內的燈號狀態
+     */
+    private TrafficLightResult analyzeRegion(Bitmap bitmap, CandidateRegion region) {
+        int width = bitmap.getWidth();
+        int height = bitmap.getHeight();
+        
+        // 計算整個區域的顏色分佈
+        int[] colorCounts = new int[3]; // 0=red, 1=yellow, 2=green
+        int totalPixels = 0;
+        
+        for (int y = region.y; y < Math.min(region.y + region.height, height); y += 2) {
+            for (int x = region.x; x < Math.min(region.x + region.width, width); x += 2) {
+                ColorPoint point = analyzePoint(bitmap, x, y);
+                if (point.isTrafficLightColor) {
+                    totalPixels++;
+                    switch (point.colorType) {
+                        case RED: colorCounts[0]++; break;
+                        case YELLOW: colorCounts[1]++; break;
+                        case GREEN: colorCounts[2]++; break;
+                    }
+                }
+            }
+        }
+        
+        if (totalPixels < 50) return null;
+        
+        // 判斷哪種顏色佔主導
         LightState state;
-        boolean isLit;
         float confidence;
+        boolean isLit;
         
-        // 判斷哪種顏色最強
-        float maxIntensity = Math.max(intensity.red, Math.max(intensity.yellow, intensity.green));
+        int maxCount = Math.max(colorCounts[0], Math.max(colorCounts[1], colorCounts[2]));
+        float density = (float) maxCount / (region.width * region.height / 4);
         
-        if (maxIntensity < 0.05f) {
-            // 都沒有亮，可能是熄燈或逆光
-            state = LightState.OFF;
-            isLit = false;
-            confidence = 0.3f;
+        isLit = density > 0.05f;
+        
+        if (colorCounts[0] == maxCount) {
+            state = LightState.RED;
+            confidence = (float) colorCounts[0] / totalPixels;
+        } else if (colorCounts[1] == maxCount) {
+            state = LightState.YELLOW;
+            confidence = (float) colorCounts[1] / totalPixels;
         } else {
-            isLit = maxIntensity > 0.15f;
-            
-            if (intensity.red == maxIntensity) {
-                state = LightState.RED;
-                confidence = intensity.red / (intensity.red + intensity.yellow + intensity.green + 0.001f);
-            } else if (intensity.yellow == maxIntensity) {
-                state = LightState.YELLOW;
-                confidence = intensity.yellow / (intensity.red + intensity.yellow + intensity.green + 0.001f);
-            } else {
-                state = LightState.GREEN;
-                confidence = intensity.green / (intensity.red + intensity.yellow + intensity.green + 0.001f);
-            }
+            state = LightState.GREEN;
+            confidence = (float) colorCounts[2] / totalPixels;
         }
-        
+
         // 轉換為正規化座標
         RectF normBox = new RectF(
-            (float) region.x / src.cols(),
-            (float) region.y / src.rows(),
-            (float) (region.x + region.width) / src.cols(),
-            (float) (region.y + region.height) / src.rows()
+            (float) region.x / width,
+            (float) region.y / height,
+            (float) (region.x + region.width) / width,
+            (float) (region.y + region.height) / height
         );
         
-        return new TrafficLightResult(normBox, region, state, confidence, isLit);
+        Rect pixelBox = new Rect(region.x, region.y, 
+            region.x + region.width, region.y + region.height);
+        
+        return new TrafficLightResult(normBox, pixelBox, state, confidence, isLit);
     }
     
     /**
-     * 分析區域內顏色強度
+     * 合併相近的候選區域
      */
-    private ColorIntensity analyzeRegionColors(Mat hsv, Rect region) {
-        // 確保區域在範圍內
-        region.x = Math.max(0, region.x - 5);
-        region.y = Math.max(0, region.y - 5);
-        region.width = Math.min(hsv.width() - region.x, region.width + 10);
-        region.height = Math.min(hsv.height() - region.y, region.height + 10);
+    private List<CandidateRegion> mergeNearbyCandidates(List<CandidateRegion> candidates) {
+        List<CandidateRegion> merged = new ArrayList<>();
+        boolean[] used = new boolean[candidates.size()];
         
-        if (region.width <= 0 || region.height <= 0) {
-            return new ColorIntensity(0, 0, 0);
+        for (int i = 0; i < candidates.size(); i++) {
+            if (used[i]) continue;
+            
+            CandidateRegion current = candidates.get(i);
+            used[i] = true;
+            
+            // 尋找相近的區域
+            for (int j = i + 1; j < candidates.size(); j++) {
+                if (used[j]) continue;
+                
+                CandidateRegion other = candidates.get(j);
+                if (current.colorType == other.colorType && 
+                    distance(current, other) < 50) {
+                    // 合併
+                    current = mergeRegions(current, other);
+                    used[j] = true;
+                }
+            }
+            
+            merged.add(current);
         }
         
-        Mat roi = new Mat(hsv, region);
-        
-        // 計算各顏色遮罩
-        Mat redMask1 = new Mat();
-        Mat redMask2 = new Mat();
-        Mat yellowMask = new Mat();
-        Mat greenMask = new Mat();
-        
-        Core.inRange(roi, RED_LOWER1, RED_UPPER1, redMask1);
-        Core.inRange(roi, RED_LOWER2, RED_UPPER2, redMask2);
-        Core.inRange(roi, YELLOW_LOWER, YELLOW_UPPER, yellowMask);
-        Core.inRange(roi, GREEN_LOWER, GREEN_UPPER, greenMask);
-        
-        Mat redMask = new Mat();
-        Core.bitwise_or(redMask1, redMask2, redMask);
-        
-        // 計算非零像素數
-        int totalPixels = region.width * region.height;
-        int redPixels = Core.countNonZero(redMask);
-        int yellowPixels = Core.countNonZero(yellowMask);
-        int greenPixels = Core.countNonZero(greenMask);
-        
-        // 釋放記憶體
-        roi.release();
-        redMask1.release();
-        redMask2.release();
-        redMask.release();
-        yellowMask.release();
-        greenMask.release();
-        
-        return new ColorIntensity(
-            (float) redPixels / totalPixels,
-            (float) yellowPixels / totalPixels,
-            (float) greenPixels / totalPixels
-        );
+        return merged;
     }
     
     /**
-     * 非極大值抑制
+     * 計算兩個區域的中心距離
+     */
+    private float distance(CandidateRegion a, CandidateRegion b) {
+        float cx1 = a.x + a.width / 2f;
+        float cy1 = a.y + a.height / 2f;
+        float cx2 = b.x + b.width / 2f;
+        float cy2 = b.y + b.height / 2f;
+        return (float) Math.sqrt(Math.pow(cx1 - cx2, 2) + Math.pow(cy1 - cy2, 2));
+    }
+    
+    /**
+     * 合併兩個區域
+     */
+    private CandidateRegion mergeRegions(CandidateRegion a, CandidateRegion b) {
+        int minX = Math.min(a.x, b.x);
+        int minY = Math.min(a.y, b.y);
+        int maxX = Math.max(a.x + a.width, b.x + b.width);
+        int maxY = Math.max(a.y + a.height, b.y + b.height);
+        
+        return new CandidateRegion(minX, minY, maxX - minX, maxY - minY, a.colorType);
+    }
+    
+    /**
+     * NMS 去重
      */
     private List<TrafficLightResult> applyNMS(List<TrafficLightResult> results, float threshold) {
         Collections.sort(results, (a, b) -> Float.compare(b.confidence, a.confidence));
@@ -384,27 +401,29 @@ public class TrafficLightDetector {
     }
     
     // 輔助類別
-    private static class TrafficLightCandidate {
-        Rect rect;
-        double area;
+    private enum ColorType { RED, YELLOW, GREEN, NONE }
+    
+    private static class ColorPoint {
+        ColorType colorType = ColorType.NONE;
+        boolean isTrafficLightColor = false;
+        float saturation;
+        float value;
+    }
+    
+    private static class CandidateRegion {
+        int x, y, width, height;
+        ColorType colorType;
         
-        TrafficLightCandidate(Rect rect, double area) {
-            this.rect = rect;
-            this.area = area;
+        CandidateRegion(int x, int y, int width, int height, ColorType colorType) {
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
+            this.colorType = colorType;
         }
     }
     
-    private static class ColorIntensity {
-        float red, yellow, green;
-        
-        ColorIntensity(float r, float y, float g) {
-            this.red = r;
-            this.yellow = y;
-            this.green = g;
-        }
-    }
-    
-    // 靜態工具方法
+    // 工具方法
     public static int getStateColor(LightState state) {
         switch (state) {
             case RED: return Color.RED;
