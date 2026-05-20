@@ -52,4 +52,7 @@ dependencies {
     
     // 物體偵測模型 (使用預設的 MobileNet SSD)
     implementation("org.tensorflow:tensorflow-lite-task-vision:0.4.4")
+    
+    // v2.3: OpenCV for traffic light detection
+    implementation("org.opencv:opencv-android:4.8.1")
 }

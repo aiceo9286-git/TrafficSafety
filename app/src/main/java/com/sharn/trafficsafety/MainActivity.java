@@ -71,6 +71,7 @@ public class MainActivity extends AppCompatActivity {
     
     // Camera & AI
     private ObjectDetectorWrapper objectDetector;
+    private TrafficLightDetector trafficLightDetector;  // v2.3: 專用紅綠燈偵測
     private DetectionTracker tracker;
     private ExecutorService cameraExecutor;
     private Handler mainHandler;
@@ -213,6 +214,7 @@ public class MainActivity extends AppCompatActivity {
             }
             
             objectDetector = new ObjectDetectorWrapper(this);
+            trafficLightDetector = new TrafficLightDetector();  // v2.3: 初始化紅綠燈偵測器
             updateStatus("系統就緒", 0xFF4CAF50, "--", "--");
             
         } catch (Exception e) {
@@ -264,6 +266,10 @@ public class MainActivity extends AppCompatActivity {
         // 原始偵測（現在是放大的畫面）
         List<DetectionResult> rawResults = objectDetector.detect(bitmap);
         
+        // v2.3: 專用紅綠燈偵測（Localization + 狀態識別）
+        final List<TrafficLightDetector.TrafficLightResult> trafficLights = 
+            trafficLightDetector != null ? trafficLightDetector.detect(bitmap) : new ArrayList<>();
+        
         // 用戶選擇過濾
         List<DetectionResult> filtered = filterByUserSelection(rawResults);
         
@@ -283,12 +289,15 @@ public class MainActivity extends AppCompatActivity {
         final ObjectDetectorWrapper.SceneMode sceneMode = objectDetector.getCurrentSceneMode();
         
         mainHandler.post(() -> {
-            overlayView.setDetections(displayResults);
+            overlayView.setDetections(displayResults, trafficLights);  // v2.3: 同時傳遞紅綠燈結果
             updateStatus(status, sceneMode);
             
             if (status.level >= 1) {
                 triggerAlertv21(status);
             }
+            
+            // v2.3: 如果有紅燈，額外警示
+            handleTrafficLightAlert(trafficLights);
         });
         
         imageProxy.close();
@@ -485,6 +494,22 @@ public class MainActivity extends AppCompatActivity {
     private boolean allPermissionsGranted() {
         return ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) 
             == PackageManager.PERMISSION_GRANTED;
+    }
+    
+    /**
+     * v2.3: 處理紅綠燈警示
+     */
+    private void handleTrafficLightAlert(List<TrafficLightDetector.TrafficLightResult> trafficLights) {
+        for (TrafficLightDetector.TrafficLightResult light : trafficLights) {
+            if (light.isLit && TrafficLightDetector.isDangerous(light.state)) {
+                // 紅燈或黃燈亮時警示
+                String msg = "注意" + TrafficLightDetector.getSimpleLabel(light.state);
+                if (textToSpeech != null) {
+    textToSpeech.speak(msg, TextToSpeech.QUEUE_FLUSH, null, null);
+                }
+                break;  // 只警示一次
+            }
+        }
     }
     
     @Override
