@@ -1,4 +1,4 @@
-com.sharn.pedestriansafety
+com.sharn.trafficsafety
 anim abc_fade_in
 anim abc_fade_out
 anim abc_grow_fade_in_from_bottom
@@ -3586,6 +3586,7 @@ id transition_scene_layoutid_cache
 id transition_transform
 id triangle
 id tvDetections
+id tvDistance
 id tvStatus
 id unchecked
 id uniform

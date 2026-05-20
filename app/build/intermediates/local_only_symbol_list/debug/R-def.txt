@@ -10,6 +10,7 @@ id previewView
 id seekBarThreshold
 id statusBar
 id tvDetections
+id tvDistance
 id tvStatus
 layout activity_main
 mipmap ic_launcher

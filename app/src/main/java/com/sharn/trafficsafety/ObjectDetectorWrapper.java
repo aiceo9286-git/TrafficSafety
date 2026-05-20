@@ -70,7 +70,7 @@ public class ObjectDetectorWrapper {
     }};
     
     // 類別優先級（台灣道路優先危險類別）
-    private static final Map<Integer, Integer> CLASS_PRIORITY = new HashMap<Integer, Integer() {{
+    private static final Map<Integer, Integer> CLASS_PRIORITY = new HashMap<Integer, Integer>() {{
         put(0, 1);   // person - 最高優先級
         put(3, 2);   // motorcycle - 次高（台灣機車多）
         put(2, 3);   // car
