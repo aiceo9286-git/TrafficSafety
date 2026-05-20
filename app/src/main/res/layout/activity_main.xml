@@ -15,7 +15,7 @@
         android:scaleType="centerCrop"/>
 
     <!-- 偵測結果覆蓋繪製層 -->
-    <com.sharn.pedestriansafety.OverlayView
+    <com.sharn.trafficsafety.OverlayView
         android:id="@+id/overlayView"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
@@ -124,6 +124,15 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:text="偵測到: -"
+            android:textColor="#FFF"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/tvDistance"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="距離: --"
             android:textColor="#FFF"
             android:textSize="14sp" />
 

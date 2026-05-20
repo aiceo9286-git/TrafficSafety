@@ -1,10 +1,10 @@
 {
     "logs": [
         {
-            "outputFile": "com.sharn.pedestriansafety.app-mergeDebugResources-2:/values-small-v4/values-small-v4.xml",
+            "outputFile": "com.sharn.pedestriansafety.app-mergeDebugResources-34:/values-small-v4/values-small-v4.xml",
             "map": [
                 {
-                    "source": "D:\\temp\\gradle_pedestrian\\caches\\transforms-3\\05bc64c00edc8643b7f17a1bda522239\\transformed\\material-1.12.0\\res\\values-small-v4\\values-small-v4.xml",
+                    "source": "C:\\Users\\Admin\\.gradle\\caches\\transforms-3\\05bc64c00edc8643b7f17a1bda522239\\transformed\\material-1.12.0\\res\\values-small-v4\\values-small-v4.xml",
                     "from": {
                         "startLines": "2,3,4,5",
                         "startColumns": "4,4,4,4",

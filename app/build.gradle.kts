@@ -3,11 +3,11 @@ plugins {
 }
 
 android {
-    namespace = "com.sharn.pedestriansafety"
+    namespace = "com.sharn.trafficsafety"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.sharn.pedestriansafety"
+        applicationId = "com.sharn.trafficsafety"
         minSdk = 24
         targetSdk = 34
         versionCode = 1
