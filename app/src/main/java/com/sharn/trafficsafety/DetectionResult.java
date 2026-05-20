@@ -66,16 +66,38 @@ public class DetectionResult {
      * 獲取警示訊息
      */
     public String getAlertMessage() {
+        String chineseLabel = getChineseLabel(label);
+        
         if (isPedestrian()) {
             if (confidence > 0.8) {
-                return "警告！前方有行人，請減速";
+                return "警告！前方有" + chineseLabel + "，請減速";
             } else {
-                return "注意！前方可能有行人";
+                return "注意！前方可能有" + chineseLabel;
             }
         } else if (isTrafficLight()) {
             return "注意交通號誌";
         }
-        return "注意：" + label;
+        return "注意：" + chineseLabel;
+    }
+    
+    /**
+     * 獲取中文標籤
+     */
+    private String getChineseLabel(String label) {
+        String lowerLabel = label.toLowerCase();
+        switch (lowerLabel) {
+            case "person": return "行人";
+            case "people": return "行人";
+            case "motorcycle": return "機車";
+            case "car": return "汽車";
+            case "bus": return "公車";
+            case "truck": return "卡車";
+            case "bicycle": return "腳踏車";
+            case "trafficlight": return "紅綠燈";
+            case "stoplight": return "號誌";
+            case "signal": return "號誌";
+            default: return label;
+        }
     }
     
     @Override
