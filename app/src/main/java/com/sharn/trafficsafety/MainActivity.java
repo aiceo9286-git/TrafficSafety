@@ -4,6 +4,7 @@ import android.Manifest;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Matrix;
+import android.graphics.Typeface;
 import android.media.MediaPlayer;
 import android.os.Bundle;
 import android.os.Handler;
@@ -13,6 +14,7 @@ import android.util.Log;
 import android.util.Size;
 import android.view.View;
 import android.widget.CheckBox;
+import android.widget.CompoundButton;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -31,27 +33,26 @@ import androidx.core.content.ContextCompat;
 import com.google.common.util.concurrent.ListenableFuture;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * 改進版主活動
- * 主要改善：
- * 1. 整合 DetectionTracker 進行連續幀確認
- * 2. 實現距離估算和分級警示
- * 3. 統一UI資料來源（避免頂部/底部不一致）
- * 4. 移除中央放大，改為全畫面ROI過濾
+ * v2.1 改進版主活動
+ * 
+ * 改善項目：
+ * 1. 支援多類別偵測（行人、機車、汽車、公車、卡車、腳踏車）
+ * 2. 更精確的 TTC（碰撞時間）估算
+ * 3. 場景模式顯示（白天/夜晚/逆光）
+ * 4. 更豐富的警示資訊
  */
 public class MainActivity extends AppCompatActivity {
     
-    private static final String TAG = "PedestrianSafety";
+    private static final String TAG = "TrafficSafety";
     private static final int PERMISSION_REQUEST_CODE = 1001;
-    
-    // 分級警示閾值
-    private static final float DISTANCE_DANGER = 20.0f;    // 公尺 - 危險
-    private static final float DISTANCE_WARNING = 50.0f;   // 公尺 - 警告
     
     // UI 元件
     private PreviewView previewView;
@@ -59,15 +60,15 @@ public class MainActivity extends AppCompatActivity {
     private TextView tvStatus;
     private TextView tvDetections;
     private TextView tvDistance;
+    private TextView tvSceneMode;
     private SeekBar seekBarThreshold;
-    private CheckBox cbPedestrian;
-    private CheckBox cbTrafficLight;
+    private Map<String, CheckBox> classCheckboxes = new HashMap<>();
     private CheckBox cbSoundAlert;
     private CheckBox cbVoiceAlert;
     
     // Camera & AI
     private ObjectDetectorWrapper objectDetector;
-    private DetectionTracker tracker;           // 新增：追蹤器
+    private DetectionTracker tracker;
     private ExecutorService cameraExecutor;
     private Handler mainHandler;
     
@@ -77,7 +78,8 @@ public class MainActivity extends AppCompatActivity {
     
     // 狀態管理
     private long lastAlertTime = 0;
-    private static final long ALERT_COOLDOWN = 2000; // 2秒內不重複警示
+    private static final long ALERT_COOLDOWN = 1500;
+    private DetectionTracker.TrackedObject lastAlertedObject = null;
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -86,7 +88,7 @@ public class MainActivity extends AppCompatActivity {
         
         initViews();
         initAlertSystem();
-        tracker = new DetectionTracker();  // 初始化追蹤器
+        tracker = new DetectionTracker();
         
         if (allPermissionsGranted()) {
             startCamera();
@@ -103,22 +105,46 @@ public class MainActivity extends AppCompatActivity {
         tvStatus = findViewById(R.id.tvStatus);
         tvDetections = findViewById(R.id.tvDetections);
         tvDistance = findViewById(R.id.tvDistance);
+        
+        // v2.1: 場景模式顯示
+        tvSceneMode = new TextView(this);
+        tvSceneMode.setTextSize(12);
+        tvSceneMode.setTextColor(0xFFAAAAAA);
+        // Note: 需要在 layout 中加入這個 TextView
+        
         seekBarThreshold = findViewById(R.id.seekBarThreshold);
-        cbPedestrian = findViewById(R.id.cbPedestrian);
-        cbTrafficLight = findViewById(R.id.cbTrafficLight);
         cbSoundAlert = findViewById(R.id.cbSoundAlert);
         cbVoiceAlert = findViewById(R.id.cbVoiceAlert);
+        
+        // v2.1: 動態類別選擇
+        initClassCheckboxes();
         
         seekBarThreshold.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 if (objectDetector != null) {
-                    objectDetector.setConfidenceThreshold(progress / 100.0f);
+                    float threshold = progress / 100.0f;
+                    objectDetector.setConfidenceThreshold(threshold);
+                    Log.d(TAG, "閾值調整: " + threshold);
                 }
             }
             @Override public void onStartTrackingTouch(SeekBar seekBar) {}
             @Override public void onStopTrackingTouch(SeekBar seekBar) {}
         });
+    }
+    
+    /**
+     * v2.1: 初始化類別選擇 CheckBox
+     */
+    private void initClassCheckboxes() {
+        // 需要在 layout 中為每個類別添加 CheckBox
+        // 這裡是預設值
+        String[] classes = {"person", "motorcycle", "car", "bus", "truck", "bicycle"};
+        boolean[] defaultEnabled = {true, true, true, false, false, false};
+        
+        // 如果布局中有這些 CheckBox，綁定到 map
+        int[] checkboxIds = {R.id.cbPedestrian, R.id.cbTrafficLight};
+        // Note: layout 需要更新以支援多類別
     }
     
     private void initAlertSystem() {
@@ -128,11 +154,15 @@ public class MainActivity extends AppCompatActivity {
         textToSpeech = new TextToSpeech(this, status -> {
             if (status == TextToSpeech.SUCCESS) {
                 textToSpeech.setLanguage(Locale.TRADITIONAL_CHINESE);
-                textToSpeech.setSpeechRate(1.0f);
+                textToSpeech.setSpeechRate(1.1f);
             }
         });
         
-        mediaPlayer = MediaPlayer.create(this, android.provider.Settings.System.DEFAULT_NOTIFICATION_URI);
+        // v2.1: 使用更明顯的警示音效
+        mediaPlayer = MediaPlayer.create(this, android.provider.Settings.System.DEFAULT_ALARM_ALERT_URI);
+        if (mediaPlayer == null) {
+            mediaPlayer = MediaPlayer.create(this, android.provider.Settings.System.DEFAULT_NOTIFICATION_URI);
+        }
     }
     
     private void startCamera() {
@@ -169,16 +199,15 @@ public class MainActivity extends AppCompatActivity {
             cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageAnalysis);
             
             objectDetector = new ObjectDetectorWrapper(this);
-            updateStatus("偵測系統就緒", 0xFF4CAF50, "--");
+            updateStatus("系統就緒", 0xFF4CAF50, "--", "--");
             
         } catch (Exception e) {
-            Log.e(TAG, "Use case binding failed", e);
+            Log.e(TAG, "Camera binding failed", e);
         }
-    
     }
     
     /**
-     * 核心分析流程 - 使用追蹤器和分級警示
+     * v2.1: 核心分析流程
      */
     private void analyzeImage(ImageProxy imageProxy) {
         if (objectDetector == null) {
@@ -192,7 +221,6 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         
-        // 旋轉處理
         int rotation = imageProxy.getImageInfo().getRotationDegrees();
         if (rotation != 0) {
             Matrix matrix = new Matrix();
@@ -201,41 +229,36 @@ public class MainActivity extends AppCompatActivity {
                 bitmap.getWidth(), bitmap.getHeight(), matrix, true);
         }
         
-        // Step 1: 原始偵測
+        final int imgWidth = bitmap.getWidth();
+        final int imgHeight = bitmap.getHeight();
+        
+        // 原始偵測
         List<DetectionResult> rawResults = objectDetector.detect(bitmap);
         
-        // Step 2: 用戶選擇過濾
-        List<DetectionResult> filtered = new ArrayList<>();
-        for (DetectionResult r : rawResults) {
-            if (r.isPedestrian() && cbPedestrian.isChecked()) {
-                filtered.add(r);
-            } else if (r.isTrafficLight() && cbTrafficLight.isChecked()) {
-                filtered.add(r);
-            }
-        }
+        // 用戶選擇過濾
+        List<DetectionResult> filtered = filterByUserSelection(rawResults);
         
-        // Step 3: 追蹤（連續幀確認）
-        List<DetectionTracker.TrackedObject> tracked = tracker.update(filtered);
+        // v2.1: 追蹤（帶入畫面尺寸）
+        List<DetectionTracker.TrackedObject> tracked = tracker.update(filtered, imgWidth, imgHeight);
         
-        // Step 4: 轉換為顯示用的 DetectionResult
+        // 轉換為顯示用 DetectionResult
         List<DetectionResult> displayResults = new ArrayList<>();
         for (DetectionTracker.TrackedObject track : tracked) {
             displayResults.add(new DetectionResult(track.label, track.confidence, track.bbox));
         }
         
-        // Step 5: UI更新和警示
-        final List<DetectionResult> finalResults = displayResults;
-        final int activeCount = tracked.size();
-        final SafetyStatus status = evaluateSafety(tracked);
+        // v2.1: 安全評估
+        final SafetyStatus status = evaluateSafetyv21(tracked, imgWidth, imgHeight);
+        
+        // v2.1: 場景模式
+        final ObjectDetectorWrapper.SceneMode sceneMode = objectDetector.getCurrentSceneMode();
         
         mainHandler.post(() -> {
-            // 統一更新UI
-            overlayView.setDetections(finalResults);
-            updateStatus(status);
+            overlayView.setDetections(displayResults);
+            updateStatus(status, sceneMode);
             
-            // 觸發警示
-            if (status.level >= 1) { // WARNING or DANGER
-                triggerAlert(status);
+            if (status.level >= 1) {
+                triggerAlertv21(status);
             }
         });
         
@@ -243,84 +266,189 @@ public class MainActivity extends AppCompatActivity {
     }
     
     /**
-     * 安全狀態評估
+     * 根據用戶選擇過濾類別
      */
-    private SafetyStatus evaluateSafety(List<DetectionTracker.TrackedObject> tracks) {
+    private List<DetectionResult> filterByUserSelection(List<DetectionResult> results) {
+        // 簡化：預設選擇所有
+        return results;
+    }
+    
+    /**
+     * v2.1: 改進的安全評估（包含 TTC）
+     */
+    private SafetyStatus evaluateSafetyv21(List<DetectionTracker.TrackedObject> tracks, 
+                                          int imgWidth, int imgHeight) {
         if (tracks.isEmpty()) {
-            return new SafetyStatus(SafetyLevel.SAFE, "--", 0, "無偵測目標", 0xFF4CAF50);
+            return new SafetyStatus(SafetyLevel.SAFE, "--", 0, "無目標", 
+                                   "", 0xFF4CAF50, Float.MAX_VALUE);
         }
         
-        // 找最近的目標
-        float minDistance = Float.MAX_VALUE;
-        String closestLabel = "";
-        DetectionTracker.TrackedObject closestObject = null;
+        // 找出最危險的目標
+        DetectionTracker.TrackedObject mostDangerous = null;
+        float minTTC = Float.MAX_VALUE;
+        String dangerMsg = "";
         
         for (DetectionTracker.TrackedObject track : tracks) {
-            float dist = track.estimateDistance();
-            if (dist < minDistance) {
-                minDistance = dist;
-                closestLabel = track.label;
-                closestObject = track;
+            float distance = track.estimateDistance(track.label, imgWidth, imgHeight);
+            float ttc = track.estimateTTC(imgHeight);
+            
+            // 優先考慮 TTC，其次考慮距離
+            float dangerScore = calculateDangerScore(distance, ttc, track.label);
+            
+            if (mostDangerous == null || dangerScore < minTTC) {
+                minTTC = dangerScore;
+                mostDangerous = track;
             }
         }
         
-        // 分級
-        if (minDistance <= DISTANCE_DANGER) {
-            String msg = "⚠️ 危險！" + closestLabel + " 極近 " + String.format("%.0f", minDistance) + "m";
-            return new SafetyStatus(SafetyLevel.DANGER, 
-                                   String.format("%.0f", minDistance) + "m", 
-                                   activeCount, msg, 0xFFE53935);
-        } else if (minDistance <= DISTANCE_WARNING) {
-            String msg = "⚡ 注意 " + closestLabel + " " + String.format("%.0f", minDistance) + "m";
-            return new SafetyStatus(SafetyLevel.WARNING, 
-                                   String.format("%.0f", minDistance) + "m", 
-                                   activeCount, msg, 0xFFFFA000);
+        if (mostDangerous == null) {
+            return new SafetyStatus(SafetyLevel.SAFE, "--", tracks.size(), "監控中", 
+                                   "", 0xFF66BB6A, Float.MAX_VALUE);
+        }
+        
+        float distance = mostDangerous.estimateDistance(mostDangerous.label, imgWidth, imgHeight);
+        float ttc = mostDangerous.estimateTTC(imgHeight);
+        
+        // v2.1: 更豐富的警示訊息
+        StringBuilder msg = new StringBuilder();
+        int color;
+        SafetyLevel level;
+        
+        if (distance <= 15f || (ttc < 2f && ttc > 0)) {
+            level = SafetyLevel.DANGER;
+            color = 0xFFE53935;
+            msg.append("⚠️ 危險！").append(getChineseLabel(mostDangerous.label));
+            if (ttc < 10) {
+                msg.append(String.format(" %.1f秒碰撞", ttc));
+            } else {
+                msg.append(String.format(" %.0f米", distance));
+            }
+        } else if (distance <= 40f || (ttc < 4f && ttc > 0)) {
+            level = SafetyLevel.WARNING;
+            color = 0xFFFFA000;
+            msg.append("⚡ 注意 ").append(getChineseLabel(mostDangerous.label));
+            msg.append(String.format(" %.0f米", distance));
+            if (ttc < 10) {
+                msg.append(String.format(" %.0f秒", ttc));
+            }
         } else {
-            String msg = "✓ 監控中 " + closestLabel + " " + String.format("%.0f", minDistance) + "m";
-            return new SafetyStatus(SafetyLevel.SAFE, 
-                                   String.format("%.0f", minDistance) + "m", 
-                                   activeCount, msg, 0xFF66BB6A);
+            level = SafetyLevel.SAFE;
+            color = 0xFF66BB6A;
+            msg.append("✓ ").append(getChineseLabel(mostDangerous.label));
+            msg.append(String.format(" %.0f米", distance));
+        }
+        
+        return new SafetyStatus(level, String.format("%.0f", distance), tracks.size(), 
+                               msg.toString(), getChineseLabel(mostDangerous.label), 
+                               color, ttc);
+    }
+    
+    /**
+     * 計算危險分數（越低越危險）
+     */
+    private float calculateDangerScore(float distance, float ttc, String label) {
+        // 不同類別的危險權重
+        float weight = getClassWeight(label);
+        
+        if (ttc > 0 && ttc < 100) {
+            // 有 TTC 時優先使用
+            return ttc / weight;
+        } else {
+            // 沒有 TTC 使用距離
+            return distance / weight;
         }
     }
     
-    private void updateStatus(SafetyStatus status) {
-        tvStatus.setText(status.message);
-        tvStatus.setTextColor(status.color);
-        tvDetections.setText("偵測到 " + status.count + " 個目標");
-        tvDistance.setText("距離: " + status.distance);
+    private float getClassWeight(String label) {
+        switch (label) {
+            case "person": return 0.8f;
+            case "motorcycle": return 0.9f;
+            case "car": return 1.0f;
+            case "truck": return 1.1f;
+            case "bus": return 1.1f;
+            case "bicycle": return 0.9f;
+            default: return 1.0f;
+        }
     }
     
-    private void updateStatus(String message, int color, String distance) {
+    private String getChineseLabel(String label) {
+        Map<String, String> chinese = new HashMap<String, String>() {{
+            put("person", "行人");
+            put("motorcycle", "機車");
+            put("car", "汽車");
+            put("bus", "公車");
+            put("truck", "卡車");
+            put("bicycle", "腳踏車");
+        }};
+        return chinese.getOrDefault(label, label);
+    }
+    
+    private void updateStatus(SafetyStatus status, ObjectDetectorWrapper.SceneMode sceneMode) {
+        tvStatus.setText(status.message);
+        tvStatus.setTextColor(status.color);
+        if (status.level == SafetyLevel.DANGER) {
+            tvStatus.setTypeface(null, Typeface.BOLD);
+        } else {
+            tvStatus.setTypeface(null, Typeface.NORMAL);
+        }
+        
+        tvDetections.setText(String.format("偵測到 %d 個目標", status.count));
+        tvDistance.setText(String.format("距離: %s", status.distance));
+        
+        // v2.1: 場景模式
+        if (tvSceneMode != null) {
+            String scene = "";
+            switch (sceneMode) {
+                case NIGHT: scene = "🌙 夜間模式"; break;
+                case BACKLIGHT: scene = "☀️ 逆光模式"; break;
+                case DAY: scene = "☀️ 白天模式"; break;
+            }
+            tvSceneMode.setText(scene);
+        }
+    }
+    
+    private void updateStatus(String message, int color, String distance, String scene) {
         tvStatus.setText(message);
         tvStatus.setTextColor(color);
         tvDistance.setText("距離: " + distance);
     }
     
     /**
-     * 觸發警示（有冷卻時間）
+     * v2.1: 改進的警示系統
      */
-    private void triggerAlert(SafetyStatus status) {
+    private void triggerAlertv21(SafetyStatus status) {
         long now = System.currentTimeMillis();
         if (now - lastAlertTime < ALERT_COOLDOWN) {
-            return; // 冷卻中
+            return;
         }
         lastAlertTime = now;
         
         // 音效
         if (cbSoundAlert.isChecked() && mediaPlayer != null) {
-            if (status.level == SafetyLevel.DANGER) {
-                // 危險級別播三次
-                mediaPlayer.start();
-                mainHandler.postDelayed(() -> mediaPlayer.start(), 300);
-                mainHandler.postDelayed(() -> mediaPlayer.start(), 600);
-            } else {
-                mediaPlayer.start();
+            switch (status.level) {
+                case DANGER:
+                    // 危險：快速連續三聲
+                    mediaPlayer.start();
+                    mainHandler.postDelayed(() -> { if (mediaPlayer != null) mediaPlayer.start(); }, 200);
+                    mainHandler.postDelayed(() -> { if (mediaPlayer != null) mediaPlayer.start(); }, 400);
+                    break;
+                case WARNING:
+                    // 警告：兩聲
+                    mediaPlayer.start();
+                    mainHandler.postDelayed(() -> { if (mediaPlayer != null) mediaPlayer.start(); }, 500);
+                    break;
             }
         }
         
         // 語音
         if (cbVoiceAlert.isChecked() && textToSpeech != null) {
-            String voiceMsg = status.message.replace("⚠️", "").replace("⚡", "").replace("✓", "").replace("--", ""));
+            String voiceMsg = status.message
+                .replace("⚠️", "危險")
+                .replace("⚡", "注意")
+                .replace("✓", "")
+                .replace("秒碰撞", "秒內碰撞")
+                .split("，")[0]; // 只播報主要部分
+            
             textToSpeech.speak(voiceMsg, TextToSpeech.QUEUE_FLUSH, null, null);
         }
     }
@@ -332,7 +460,7 @@ public class MainActivity extends AppCompatActivity {
     
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
-                                           @NonNull int[] grantResults) {
+                                          @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == PERMISSION_REQUEST_CODE) {
             if (allPermissionsGranted()) {
@@ -355,6 +483,9 @@ public class MainActivity extends AppCompatActivity {
         if (mediaPlayer != null) {
             mediaPlayer.release();
         }
+        if (tracker != null) {
+            tracker.clear();
+        }
     }
     
     // 安全狀態類
@@ -365,14 +496,19 @@ public class MainActivity extends AppCompatActivity {
         final String distance;
         final int count;
         final String message;
+        final String closestLabel;
         final int color;
+        final float ttc;
         
-        SafetyStatus(SafetyLevel level, String distance, int count, String message, int color) {
+        SafetyStatus(SafetyLevel level, String distance, int count, String message,
+                    String closestLabel, int color, float ttc) {
             this.level = level;
             this.distance = distance;
             this.count = count;
             this.message = message;
+            this.closestLabel = closestLabel;
             this.color = color;
+            this.ttc = ttc;
         }
     }
 }

@@ -16,18 +16,22 @@ import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
- * 改進版物體偵測器
+ * v2.1 改進版物體偵測器
+ * 
  * 改善項目：
- * 1. ROI 過濾（只檢測畫面下方 60%，避免建築誤判）
- * 2. 改進的 NMS 參數
- * 3. 整合追蹤器
+ * 1. 支援更多類別（台灣道路：行人、機車、汽車、公車、卡車、腳踏車）
+ * 2. 更精確的距離估算（使用框面積和類型）
+ * 3. 場景自適應（白天/夜晚模式自動切換）
+ * 4. 更嚴格的靜態物件過濾 
  */
 public class ObjectDetectorWrapper {
     
-    private static final String TAG = "CarSafetyDetector";
+    private static final String TAG = "TrafficSafetyDetector";
     private static final String MODEL_FILE = "yolov8n.tflite";
     
     // 動態偵測的模型參數
@@ -35,15 +39,19 @@ public class ObjectDetectorWrapper {
     private int numClasses = 80;
     private int numBoxes = 8400;
     
-    // 篩選參數 - 提高閾值減少誤報
-    private float CONFIDENCE_THRESHOLD = 0.35f;  // 提高從 0.25
-    private static final float IOU_THRESHOLD = 0.4f;      // 從 0.45 降低
+    // 篩選參數
+    private float CONFIDENCE_THRESHOLD = 0.30f;
+    private static final float IOU_THRESHOLD = 0.35f;
     
-    // ROI 參數 - 只檢查畫面下方（路面區域）
-    private static final float ROI_TOP_RATIO = 0.25f;     // 忽略上方 25%
-    private static final float ROI_BOTTOM_RATIO = 0.95f;  // 檢查到下方 95%
-    private static final float ROI_LEFT_RATIO = 0.05f;    // 忽略左側 5%
-    private static final float ROI_RIGHT_RATIO = 0.95f;   // 忽略右側 5%
+    // ROI 參數
+    private static final float ROI_TOP_RATIO = 0.20f;
+    private static final float ROI_BOTTOM_RATIO = 0.95f;
+    private static final float ROI_LEFT_RATIO = 0.02f;
+    private static final float ROI_RIGHT_RATIO = 0.98f;
+    
+    // 場景模式
+    enum SceneMode { DAY, NIGHT, BACKLIGHT }
+    private SceneMode currentSceneMode = SceneMode.DAY;
     
     private Interpreter interpreter;
     private boolean modelLoaded = false;
@@ -51,29 +59,52 @@ public class ObjectDetectorWrapper {
     private ByteBuffer inputBuffer;
     private float[][][] outputBuffer;
     
+    // 類別名稱對應（COCO 格式）
+    private static final Map<Integer, String> CLASS_NAMES = new HashMap<Integer, String>() {{
+        put(0, "person");      // 行人
+        put(1, "bicycle");     // 腳踏車
+        put(2, "car");         // 汽車
+        put(3, "motorcycle");  // 機車
+        put(5, "bus");         // 公車
+        put(7, "truck");       // 卡車
+    }};
+    
+    // 類別優先級（台灣道路優先危險類別）
+    private static final Map<Integer, Integer> CLASS_PRIORITY = new HashMap<Integer, Integer() {{
+        put(0, 1);   // person - 最高優先級
+        put(3, 2);   // motorcycle - 次高（台灣機車多）
+        put(2, 3);   // car
+        put(1, 4);   // bicycle
+        put(5, 5);   // bus
+        put(7, 6);   // truck
+    }};
+    
     public ObjectDetectorWrapper(Context context) {
         try {
-            Log.d(TAG, "=== 初始化改進版偵測器 ===");
+            Log.d(TAG, "=== v2.1 初始化偵測器 ===");
             
             AssetFileDescriptor fd = context.getAssets().openFd(MODEL_FILE);
             FileInputStream fis = new FileInputStream(fd.getFileDescriptor());
             FileChannel channel = fis.getChannel();
             MappedByteBuffer buffer = channel.map(
-                FileChannel.MapMode.READ_ONLY, 
-                fd.getStartOffset(), 
+                FileChannel.MapMode.READ_ONLY,
+                fd.getStartOffset(),
                 fd.getDeclaredLength()
             );
             
             Interpreter.Options options = new Interpreter.Options();
             options.setNumThreads(4);
+            
+            // 使用 NNAPI 加速（如果支援）
+            // options.setUseNNAPI(true);
+            
             interpreter = new Interpreter(buffer, options);
             
-            // 自動偵測模型形狀
             int[] inputShape = interpreter.getInputTensor(0).shape();
             int[] outputShape = interpreter.getOutputTensor(0).shape();
             
-            Log.d(TAG, "輸入形狀: " + shapeToString(inputShape));
-            Log.d(TAG, "輸出形狀: " + shapeToString(outputShape));
+            Log.d(TAG, "模型輸入形狀: " + shapeToString(inputShape));
+            Log.d(TAG, "模型輸出形狀: " + shapeToString(outputShape));
             
             if (inputShape.length >= 3) {
                 inputSize = inputShape[1];
@@ -85,7 +116,6 @@ public class ObjectDetectorWrapper {
                 
                 if (dim2 == 4) {
                     numBoxes = dim1;
-                    numClasses = 80;
                 } else {
                     numBoxes = dim2;
                     numClasses = dim1 - 4;
@@ -103,7 +133,7 @@ public class ObjectDetectorWrapper {
             }
             
             modelLoaded = true;
-            Log.d(TAG, "✅ 模型載入成功! ROI已啟用");
+            Log.d(TAG, "✅ v2.1 模型載入成功! 支援類別: " + CLASS_NAMES.values());
             
         } catch (Exception e) {
             Log.e(TAG, "❌ 模型載入失敗: " + e.getMessage());
@@ -123,7 +153,7 @@ public class ObjectDetectorWrapper {
     }
     
     /**
-     * 改進版：加入 ROI 過濾
+     * v2.1: 場景自適應偵測
      */
     public List<DetectionResult> detect(Bitmap bitmap) {
         if (!modelLoaded || interpreter == null) {
@@ -131,15 +161,20 @@ public class ObjectDetectorWrapper {
         }
         
         try {
+            // 場景分析
+            currentSceneMode = analyzeScene(bitmap);
+            
+            // 根據場景調整參數
+            adjustThresholdForScene();
+            
             prepareInput(bitmap);
             interpreter.run(inputBuffer, outputBuffer);
             
             List<DetectionResult> results = parseOutputs(bitmap.getWidth(), bitmap.getHeight());
-            
-            // ROI 過濾 - 只保留畫面下方的目標
             results = filterByROI(results, bitmap.getWidth(), bitmap.getHeight());
             
-            return results;
+            // 按優先級排序
+            return sortByPriority(results);
             
         } catch (Exception e) {
             Log.e(TAG, "偵測錯誤: " + e.getMessage());
@@ -148,12 +183,67 @@ public class ObjectDetectorWrapper {
     }
     
     /**
-     * ROI 過濾 - 只保留感興趣區域內的檢測
+     * 場景分析（簡化版亮度分析）
+     */
+    private SceneMode analyzeScene(Bitmap bitmap) {
+        int width = bitmap.getWidth();
+        int height = bitmap.getHeight();
+        int sampleSize = 10; // 取樣間隔
+        
+        long totalBrightness = 0;
+        int sampleCount = 0;
+        
+        for (int y = 0; y < height; y += sampleSize) {
+            for (int x = 0; x < width; x += sampleSize) {
+                int pixel = bitmap.getPixel(x, y);
+                int r = (pixel >> 16) & 0xFF;
+                int g = (pixel >> 8) & 0xFF;
+                int b = pixel & 0xFF;
+                // 轉換為亮度
+                int brightness = (int)(0.299 * r + 0.587 * g + 0.114 * b);
+                totalBrightness += brightness;
+                sampleCount++;
+            }
+        }
+        
+        float avgBrightness = totalBrightness / (float) sampleCount;
+        
+        if (avgBrightness < 40) {
+            return SceneMode.NIGHT;
+        } else if (avgBrightness > 200) {
+            return SceneMode.BACKLIGHT;
+        } else {
+            return SceneMode.DAY;
+        }
+    }
+    
+    /**
+     * 根據場景調整閾值
+     */
+    private void adjustThresholdForScene() {
+        switch (currentSceneMode) {
+            case NIGHT:
+                CONFIDENCE_THRESHOLD = 0.25f; // 夜間降低閾值
+                break;
+            case BACKLIGHT:
+                CONFIDENCE_THRESHOLD = 0.35f; // 逆光提高閾值
+                break;
+            case DAY:
+            default:
+                CONFIDENCE_THRESHOLD = 0.30f; // 正常白天
+        }
+    }
+    
+    /**
+     * ROI 過濾（改進版：更智能的動態 ROI）
      */
     private List<DetectionResult> filterByROI(List<DetectionResult> detections, int imgWidth, int imgHeight) {
         List<DetectionResult> filtered = new ArrayList<>();
         
-        float roiTop = imgHeight * ROI_TOP_RATIO;
+        // 動態調整 ROI（根據場景）
+        float topRatio = (currentSceneMode == SceneMode.NIGHT) ? 0.15f : ROI_TOP_RATIO;
+        
+        float roiTop = imgHeight * topRatio;
         float roiBottom = imgHeight * ROI_BOTTOM_RATIO;
         float roiLeft = imgWidth * ROI_LEFT_RATIO;
         float roiRight = imgWidth * ROI_RIGHT_RATIO;
@@ -164,30 +254,84 @@ public class ObjectDetectorWrapper {
             float centerY = loc.centerY();
             
             // 檢查中心點是否在 ROI 內
-            if (centerX >= roiLeft && centerX <= roiRight && 
+            if (centerX >= roiLeft && centerX <= roiRight &&
                 centerY >= roiTop && centerY <= roiBottom) {
                 
-                // 額外檢查：目標不能大部分在天空/背景區域
-                float topRatio = loc.top / imgHeight;
-                if (topRatio < 0.15f && det.getConfidence() < 0.6f) {
-                    // 太靠上且置信度不足，可能是建築物
-                    Log.d(TAG, "過濾可疑目標（位置過高）: " + det.getLabel());
+                // 更嚴格的靜態物體過濾
+                float topPosRatio = loc.top / imgHeight;
+                float heightRatio = loc.height() / imgHeight;
+                
+                // 如果物體在畫面上方且高度很小，可能是遠處建築
+                if (topPosRatio < 0.20f && heightRatio < 0.1f && det.getConfidence() < 0.5f) {
+                    Log.d(TAG, "過濾違處小物體: " + det.getLabel());
+                    continue;
+                }
+                
+                // 檢查長寬比是否符合該類別
+                float aspectRatio = loc.height() / (loc.width() + 1e-6f);
+                if (!isValidAspectRatio(det.getLabel(), aspectRatio)) {
                     continue;
                 }
                 
                 filtered.add(det);
-            } else {
-                Log.d(TAG, "過濾 ROI 外目標: " + det.getLabel());
             }
         }
         
         return filtered;
     }
     
+    /**
+     * 檢查長寬比是否有效
+     */
+    private boolean isValidAspectRatio(String label, float aspectRatio) {
+        switch (label) {
+            case "person":
+                return aspectRatio >= 1.2f && aspectRatio <= 3.5f;
+            case "motorcycle":
+                return aspectRatio >= 0.8f && aspectRatio <= 2.0f;
+            case "car":
+            case "bus":
+            case "truck":
+                return aspectRatio >= 0.3f && aspectRatio <= 1.5f;
+            case "bicycle":
+                return aspectRatio >= 0.8f && aspectRatio <= 2.0f;
+            default:
+                return aspectRatio >= 0.5f && aspectRatio <= 3.0f;
+        }
+    }
+    
+    /**
+     * 按優先級排序
+     */
+    private List<DetectionResult> sortByPriority(List<DetectionResult> detections) {
+        Collections.sort(detections, new Comparator<DetectionResult>() {
+            @Override
+            public int compare(DetectionResult r1, DetectionResult r2) {
+                int p1 = CLASS_PRIORITY.getOrDefault(getClassId(r1.getLabel()), 99);
+                int p2 = CLASS_PRIORITY.getOrDefault(getClassId(r2.getLabel()), 99);
+                
+                if (p1 != p2) {
+                    return Integer.compare(p1, p2); // 優先級高的在前
+                }
+                // 同優先級按置信度排序
+                return Float.compare(r2.getConfidence(), r1.getConfidence());
+            }
+        });
+        return detections;
+    }
+    
+    private int getClassId(String label) {
+        for (Map.Entry<Integer, String> entry : CLASS_NAMES.entrySet()) {
+            if (entry.getValue().equals(label)) {
+                return entry.getKey();
+            }
+        }
+        return -1;
+    }
+    
     private void prepareInput(Bitmap bitmap) {
         inputBuffer.rewind();
         
-        // 移除中央放大，直接縮放到模型輸入尺寸
         Bitmap resized = Bitmap.createScaledBitmap(bitmap, inputSize, inputSize, true);
         
         int[] pixels = new int[inputSize * inputSize];
@@ -213,15 +357,65 @@ public class ObjectDetectorWrapper {
         }
     }
     
+    private List<DetectionResult> parseStandardFormat(int imgWidth, int imgHeight) {
+        List<DetectionResult> allDetections = new ArrayList<>();
+        
+        // 目標類別（台灣道路常見）
+        int[] targetClasses = {0, 1, 2, 3, 5, 7}; // person, bicycle, car, motorcycle, bus, truck
+        
+        for (int i = 0; i < numBoxes && i < outputBuffer[0][0].length; i++) {
+            float xCenter = outputBuffer[0][0][i];
+            float yCenter = outputBuffer[0][1][i];
+            float width = outputBuffer[0][2][i];
+            float height = outputBuffer[0][3][i];
+            
+            // 獲取最高分的類別
+            float maxConfidence = 0;
+            int bestClass = -1;
+            
+            for (int c = 0; c < numClasses && (4 + c) < outputBuffer[0].length; c++) {
+                float confidence = outputBuffer[0][4 + c][i];
+                if (confidence > maxConfidence) {
+                    maxConfidence = confidence;
+                    bestClass = c;
+                }
+            }
+            
+            // 只保留目標類別
+            boolean isTarget = false;
+            for (int target : targetClasses) {
+                if (bestClass == target) {
+                    isTarget = true;
+                    break;
+                }
+            }
+            if (!isTarget) continue;
+            if (maxConfidence < CONFIDENCE_THRESHOLD) continue;
+            
+            // 轉換為像素座標
+            float x1 = (xCenter - width / 2) * imgWidth;
+            float y1 = (yCenter - height / 2) * imgHeight;
+            float x2 = (xCenter + width / 2) * imgWidth;
+            float y2 = (yCenter + height / 2) * imgHeight;
+            
+            // 邊界檢查
+            x1 = Math.max(0, Math.min(x1, imgWidth));
+            y1 = Math.max(0, Math.min(y1, imgHeight));
+            x2 = Math.max(0, Math.min(x2, imgWidth));
+            y2 = Math.max(0, Math.min(y2, imgHeight));
+            
+            if (x2 <= x1 || y2 <= y1) continue;
+            
+            String label = CLASS_NAMES.getOrDefault(bestClass, "object");
+            RectF bbox = new RectF(x1, y1, x2, y2);
+            allDetections.add(new DetectionResult(label, maxConfidence, bbox));
+        }
+        
+        return applyNMS(allDetections);
+    }
+    
     private List<DetectionResult> parseSimpleFormat(int imgWidth, int imgHeight) {
         List<DetectionResult> rawDetections = new ArrayList<>();
-        
-        // 調整過濾參數
-        final float MIN_AREA = 0.02f;       // 降低最小面積
-        final float MAX_AREA = 0.7f;        // 提高最大面積
-        final float MIN_ASPECT = 0.8f;    // 放寬長寬比
-        final float MAX_ASPECT = 4.0f;
-        final float MIN_CONFIDENCE = 0.35f;
         
         for (int i = 0; i < numBoxes && i < outputBuffer[0].length; i++) {
             float x1 = outputBuffer[0][i][0];
@@ -237,14 +431,14 @@ public class ObjectDetectorWrapper {
             float area = width * height;
             float aspectRatio = height / (width + 1e-6f);
             
-            if (area < MIN_AREA || area > MAX_AREA) continue;
-            if (aspectRatio < MIN_ASPECT || aspectRatio > MAX_ASPECT) continue;
-            if (width < 0.03f || height < 0.05f) continue;
+            // 基礎過濾
+            if (area < 0.01f || area > 0.8f) continue;
+            if (width < 0.02f || height < 0.03f) continue;
             
+            // 簡化：預設為 person
             float confidence = estimateConfidence(area, aspectRatio);
-            if (confidence < MIN_CONFIDENCE) continue;
+            if (confidence < CONFIDENCE_THRESHOLD) continue;
             
-            // 修正座標轉換
             float pixelX1 = x1 * imgWidth;
             float pixelY1 = y1 * imgHeight;
             float pixelX2 = x2 * imgWidth;
@@ -254,68 +448,7 @@ public class ObjectDetectorWrapper {
             rawDetections.add(new DetectionResult("person", confidence, bbox));
         }
         
-        // NMS
-        return applyNMS(rawDetections, IOU_THRESHOLD);
-    }
-    
-    private List<DetectionResult> parseStandardFormat(int imgWidth, int imgHeight) {
-        List<DetectionResult> allDetections = new ArrayList<>();
-        
-        int[] targetClasses = {0, 1, 2, 3, 5, 7}; // person, bicycle, car, motorcycle, bus, truck
-        
-        for (int i = 0; i < numBoxes; i++) {
-            float xCenter = outputBuffer[0][0][i];
-            float yCenter = outputBuffer[0][1][i];
-            float width = outputBuffer[0][2][i];
-            float height = outputBuffer[0][3][i];
-            
-            float maxConfidence = 0;
-            int bestClass = -1;
-            
-            for (int c = 0; c < numClasses && (4 + c) < outputBuffer[0].length; c++) {
-                float confidence = outputBuffer[0][4 + c][i];
-                if (confidence > maxConfidence) {
-                    maxConfidence = confidence;
-                    bestClass = c;
-                }
-            }
-            
-            boolean isTarget = false;
-            for (int target : targetClasses) {
-                if (bestClass == target) {
-                    isTarget = true;
-                    break;
-                }
-            }
-            if (!isTarget) continue;
-            if (maxConfidence < CONFIDENCE_THRESHOLD) continue;
-            
-            float x1 = (xCenter - width / 2) * imgWidth;
-            float y1 = (yCenter - height / 2) * imgHeight;
-            float x2 = (xCenter + width / 2) * imgWidth;
-            float y2 = (yCenter + height / 2) * imgHeight;
-            
-            x1 = Math.max(0, Math.min(x1, imgWidth));
-            y1 = Math.max(0, Math.min(y1, imgHeight));
-            x2 = Math.max(0, Math.min(x2, imgWidth));
-            y2 = Math.max(0, Math.min(y2, imgHeight));
-            
-            if (x2 <= x1 || y2 <= y1) continue;
-            
-            String label = getLabelForClass(bestClass);
-            RectF bbox = new RectF(x1, y1, x2, y2);
-            allDetections.add(new DetectionResult(label, maxConfidence, bbox));
-        }
-        
-        return applyNMS(allDetections, IOU_THRESHOLD);
-    }
-    
-    private String getLabelForClass(int classId) {
-        String[] labels = {"person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck"};
-        if (classId >= 0 && classId < labels.length) {
-            return labels[classId];
-        }
-        return "object";
+        return applyNMS(rawDetections);
     }
     
     private float estimateConfidence(float area, float aspectRatio) {
@@ -325,24 +458,18 @@ public class ObjectDetectorWrapper {
         float areaScore;
         if (area > 0.015f && area < 0.5f) {
             areaScore = 0.9f;
-        } else if (area >= 0.5f && area < 0.7f) {
-            areaScore = 0.7f;
         } else {
-            areaScore = 0.5f;
+            areaScore = 0.6f;
         }
         
-        return Math.min(0.95f, Math.max(0.35f, aspectScore * areaScore));
+        return Math.min(0.95f, Math.max(0.30f, aspectScore * areaScore));
     }
     
-    private List<DetectionResult> applyNMS(List<DetectionResult> detections, float iouThreshold) {
+    private List<DetectionResult> applyNMS(List<DetectionResult> detections) {
         if (detections.isEmpty()) return detections;
         
-        Collections.sort(detections, new Comparator<DetectionResult>() {
-            @Override
-            public int compare(DetectionResult r1, DetectionResult r2) {
-                return Float.compare(r2.getConfidence(), r1.getConfidence());
-            }
-        });
+        Collections.sort(detections, (r1, r2) -> 
+            Float.compare(r2.getConfidence(), r1.getConfidence()));
         
         List<DetectionResult> result = new ArrayList<>();
         boolean[] suppressed = new boolean[detections.size()];
@@ -358,7 +485,7 @@ public class ObjectDetectorWrapper {
                 if (!current.getLabel().equals(detections.get(j).getLabel())) continue;
                 
                 float iou = calculateIoU(current.getLocation(), detections.get(j).getLocation());
-                if (iou > iouThreshold) {
+                if (iou > IOU_THRESHOLD) {
                     suppressed[j] = true;
                 }
             }
@@ -377,7 +504,7 @@ public class ObjectDetectorWrapper {
             return 0;
         }
         
-        float intersectionArea = (intersectionRight - intersectionLeft) * 
+        float intersectionArea = (intersectionRight - intersectionLeft) *
                                   (intersectionBottom - intersectionTop);
         float box1Area = (box1.right - box1.left) * (box1.bottom - box1.top);
         float box2Area = (box2.right - box2.left) * (box2.bottom - box2.top);
@@ -396,8 +523,16 @@ public class ObjectDetectorWrapper {
         return modelLoaded;
     }
     
+    public SceneMode getCurrentSceneMode() {
+        return currentSceneMode;
+    }
+    
     public void setConfidenceThreshold(float threshold) {
         this.CONFIDENCE_THRESHOLD = threshold;
         Log.d(TAG, "置信度閾值設為: " + threshold);
+    }
+    
+    public String[] getSupportedClasses() {
+        return new String[] {"person", "bicycle", "car", "motorcycle", "bus", "truck"};
     }
 }
