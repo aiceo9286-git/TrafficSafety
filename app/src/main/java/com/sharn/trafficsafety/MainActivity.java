@@ -292,7 +292,7 @@ public class MainActivity extends AppCompatActivity {
             overlayView.setDetections(displayResults, trafficLights);  // v2.3: 同時傳遞紅綠燈結果
             updateStatus(status, sceneMode);
             
-            if (status.level >= 1) {
+            if (status.level != SafetyLevel.SAFE) {
                 triggerAlertv21(status);
             }
             
