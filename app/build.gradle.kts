@@ -10,8 +10,8 @@ android {
         applicationId = "com.sharn.trafficsafety"
         minSdk = 24
         targetSdk = 34
-        versionCode = 8
-        versionName = "2.3.2"
+        versionCode = 10
+        versionName = "2.5.0"
     }
 
     buildTypes {

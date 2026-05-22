@@ -44,13 +44,13 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * v2.1 改進版主活動
+ * v2.5 重構版主活動（根據 ChatGPT 分析修正）
  * 
- * 改善項目：
- * 1. 支援多類別偵測（行人、機車、汽車、公車、卡車、腳踏車）
- * 2. 更精確的 TTC（碰撞時間）估算
- * 3. 場景模式顯示（白天/夜晚/逆光）
- * 4. 更豐富的警示資訊
+ * 修正項目：
+ * 1. ✅ 使用真正多輸出解析 (boxes + scores)
+ * 2. ✅ 修正座標轉換（256x256 → 原始尺寸）
+ * 3. ✅ 暫時移除 crop/zoom，使用完整畫面
+ * 4. ✅ 修正 preview/overlay 座標對齊
  */
 public class MainActivity extends AppCompatActivity {
     
@@ -80,10 +80,18 @@ public class MainActivity extends AppCompatActivity {
     private MediaPlayer mediaPlayer;
     private TextToSpeech textToSpeech;
     
-    // 狀態管理
+    // 狀態管理 - v2.4 優化
     private long lastAlertTime = 0;
-    private static final long ALERT_COOLDOWN = 1500;
+    private static final long ALERT_COOLDOWN = 800;  // 從 1500ms 降到 800ms 更靈敏
+    private static final long ALERT_COOLDOWN_DANGER = 400;  // 危險時更快
     private DetectionTracker.TrackedObject lastAlertedObject = null;
+    
+    // v2.4: FPS 計算
+    private long lastFrameTime = 0;
+    private float currentFps = 0;
+    private int frameCount = 0;
+    private long fpsUpdateTime = 0;
+    private TextView tvFps;
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -110,6 +118,13 @@ public class MainActivity extends AppCompatActivity {
         tvDetections = findViewById(R.id.tvDetections);
         tvDistance = findViewById(R.id.tvDistance);
         
+        // v2.4: FPS 顯示
+        tvFps = new TextView(this);
+        tvFps.setTextSize(12);
+        tvFps.setTextColor(0xFFAA00FF);
+        tvFps.setText("FPS: --");
+        // Note: 需要在 layout 加入此 TextView
+        
         // v2.1: 場景模式顯示
         tvSceneMode = new TextView(this);
         tvSceneMode.setTextSize(12);
@@ -126,11 +141,10 @@ public class MainActivity extends AppCompatActivity {
         seekBarThreshold.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                if (objectDetector != null) {
-                    float threshold = progress / 100.0f;
-                    objectDetector.setConfidenceThreshold(threshold);
-                    Log.d(TAG, "閾值調整: " + threshold);
-                }
+                    if (objectDetector != null) {
+                        // v2.5: 暫時禁用閾值調整，使用固定值
+                        Log.d(TAG, "閾值調整功能已在 v2.5 中禁用");
+                    }
             }
             @Override public void onStartTrackingTouch(SeekBar seekBar) {}
             @Override public void onStopTrackingTouch(SeekBar seekBar) {}
@@ -223,7 +237,7 @@ public class MainActivity extends AppCompatActivity {
     }
     
     /**
-     * v2.1: 核心分析流程
+     * v2.5: 核心分析流程 - 修正座標處理
      */
     private void analyzeImage(ImageProxy imageProxy) {
         if (objectDetector == null) {
@@ -237,68 +251,66 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         
-        int rotation = imageProxy.getImageInfo().getRotationDegrees();
+        final int rotation = imageProxy.getImageInfo().getRotationDegrees();
+        final int originalWidth = bitmap.getWidth();
+        final int originalHeight = bitmap.getHeight();
+        
+        // v2.5: 暫時移除 crop/zoom，使用完整畫面進行偵測
+        // 模型會自動縮放到 256x256，然後返回原始座標
+        Bitmap processedBitmap = bitmap;
+        
+        // 如果需要旋轉，在偵測後處理
         if (rotation != 0) {
             Matrix matrix = new Matrix();
             matrix.postRotate(rotation);
-            bitmap = Bitmap.createBitmap(bitmap, 0, 0, 
-                bitmap.getWidth(), bitmap.getHeight(), matrix, true);
+            processedBitmap = Bitmap.createBitmap(bitmap, 0, 0, 
+                originalWidth, originalHeight, matrix, true);
         }
         
-        // v2.1: 數位變焦（放大畫面中央的60%，專注於車前方）
-        float zoomRatio = 0.6f;  // 改為0.6表示放大中央60%的區域，移除較多背景
-        int cropWidth = (int)(bitmap.getWidth() * zoomRatio);
-        int cropHeight = (int)(bitmap.getHeight() * zoomRatio);
-        int cropX = (bitmap.getWidth() - cropWidth) / 2;  // 從中央開始裁剪
-        int cropY = (int)(bitmap.getHeight() * 0.3f);     // 從上往下30%處開始（聚焦路面）
+        final int imgWidth = processedBitmap.getWidth();
+        final int imgHeight = processedBitmap.getHeight();
         
-        // 確保不超出邊界
-        cropX = Math.max(0, cropX);
-        cropY = Math.max(0, Math.min(cropY, bitmap.getHeight() - cropHeight));
+        // 偵測 - 現在會正確解析 boxes + scores
+        List<DetectionResult> rawResults = objectDetector.detect(processedBitmap);
         
-        // 裁剪並放大回原尺寸
-        Bitmap cropped = Bitmap.createBitmap(bitmap, cropX, cropY, cropWidth, cropHeight);
-        bitmap = Bitmap.createScaledBitmap(cropped, bitmap.getWidth(), bitmap.getHeight(), true);
-        
-        final int imgWidth = bitmap.getWidth();
-        final int imgHeight = bitmap.getHeight();
-        
-        // 原始偵測（現在是放大的畫面）
-        List<DetectionResult> rawResults = objectDetector.detect(bitmap);
-        
-        // v2.3: 專用紅綠燈偵測（Localization + 狀態識別）
-        final List<TrafficLightDetector.TrafficLightResult> trafficLights = 
-            trafficLightDetector != null ? trafficLightDetector.detect(bitmap) : new ArrayList<>();
+        // v2.5: 紅綠燈偵測使用與行人相同的模型（模型已包含 traffic light 類別）
+        final List<DetectionResult> trafficLightResults = new ArrayList<>();
+        for (DetectionResult result : rawResults) {
+            if (result.getLabel().equals("紅綠燈")) {
+                trafficLightResults.add(result);
+            }
+        }
         
         // 用戶選擇過濾
         List<DetectionResult> filtered = filterByUserSelection(rawResults);
         
-        // v2.1: 追蹤（帶入畫面尺寸）
+        // v2.5: 追蹤
         List<DetectionTracker.TrackedObject> tracked = tracker.update(filtered, imgWidth, imgHeight);
         
-        // 轉換為顯示用 DetectionResult
+        // 轉換為顯示用 DetectionResult - 注意座標已經是正確的原始尺寸
         List<DetectionResult> displayResults = new ArrayList<>();
         for (DetectionTracker.TrackedObject track : tracked) {
             displayResults.add(new DetectionResult(track.label, track.confidence, track.bbox));
         }
         
-        // v2.1: 安全評估
+        // 安全評估
         final SafetyStatus status = evaluateSafetyv21(tracked, imgWidth, imgHeight);
         
-        // v2.1: 場景模式
-        final ObjectDetectorWrapper.SceneMode sceneMode = objectDetector.getCurrentSceneMode();
-        
         mainHandler.post(() -> {
-            overlayView.setDetections(displayResults, trafficLights);  // v2.3: 同時傳遞紅綠燈結果
-            updateStatus(status, sceneMode);
+            // v2.5: overlayView 的座標現在是正確的，直接顯示
+            overlayView.setDetections(displayResults, trafficLightResults);
+            updateStatus(status);
             
             if (status.level != SafetyLevel.SAFE) {
                 triggerAlertv21(status);
             }
-            
-            // v2.3: 如果有紅燈，額外警示
-            handleTrafficLightAlert(trafficLights);
         });
+        
+        // 釋放資源
+        if (processedBitmap != bitmap) {
+            processedBitmap.recycle();
+        }
+        bitmap.recycle();
         
         imageProxy.close();
     }
@@ -421,28 +433,53 @@ public class MainActivity extends AppCompatActivity {
         return chinese.getOrDefault(label, label);
     }
     
-    private void updateStatus(SafetyStatus status, ObjectDetectorWrapper.SceneMode sceneMode) {
+    /**
+     * v2.5: 更新狀態（簡化版）
+     */
+    private void updateStatus(SafetyStatus status) {
+        // 計算並顯示 FPS
+        calculateFps();
+        
         tvStatus.setText(status.message);
         tvStatus.setTextColor(status.color);
         if (status.level == SafetyLevel.DANGER) {
             tvStatus.setTypeface(null, Typeface.BOLD);
+            pulsingAlert(tvStatus);
         } else {
             tvStatus.setTypeface(null, Typeface.NORMAL);
+            tvStatus.setAlpha(1.0f);
         }
         
         tvDetections.setText(String.format("偵測到 %d 個目標", status.count));
         tvDistance.setText(String.format("距離: %s", status.distance));
+    }
+    
+    /**
+     * v2.4: 計算 FPS
+     */
+    private void calculateFps() {
+        long now = System.currentTimeMillis();
+        frameCount++;
         
-        // v2.1: 場景模式
-        if (tvSceneMode != null) {
-            String scene = "";
-            switch (sceneMode) {
-                case NIGHT: scene = "🌙 夜間模式"; break;
-                case BACKLIGHT: scene = "☀️ 逆光模式"; break;
-                case DAY: scene = "☀️ 白天模式"; break;
-            }
-            tvSceneMode.setText(scene);
+        if (now - fpsUpdateTime >= 1000) {
+            currentFps = frameCount * 1000f / (now - fpsUpdateTime);
+            frameCount = 0;
+            fpsUpdateTime = now;
         }
+    }
+    
+    /**
+     * v2.4: 危險閃爍效果
+     */
+    private void pulsingAlert(final View view) {
+        view.animate()
+            .alpha(0.5f)
+            .setDuration(300)
+            .withEndAction(() -> view.animate()
+                .alpha(1.0f)
+                .setDuration(300)
+                .start())
+            .start();
     }
     
     private void updateStatus(String message, int color, String distance, String scene) {
@@ -452,40 +489,45 @@ public class MainActivity extends AppCompatActivity {
     }
     
     /**
-     * v2.1: 改進的警示系統
+     * v2.4: 改進的警示系統（優化冷卻時間）
      */
     private void triggerAlertv21(SafetyStatus status) {
         long now = System.currentTimeMillis();
-        if (now - lastAlertTime < ALERT_COOLDOWN) {
+        
+        // v2.4: 根據危險程度調整冷卻時間
+        long cooldown = (status.level == SafetyLevel.DANGER) ? ALERT_COOLDOWN_DANGER : ALERT_COOLDOWN;
+        
+        if (now - lastAlertTime < cooldown) {
             return;
         }
         lastAlertTime = now;
         
-        // 音效
+        // 音效 - v2.4: 優先級區分
         if (cbSoundAlert.isChecked() && mediaPlayer != null) {
             switch (status.level) {
                 case DANGER:
                     // 危險：快速連續三聲
                     mediaPlayer.start();
-                    mainHandler.postDelayed(() -> { if (mediaPlayer != null) mediaPlayer.start(); }, 200);
-                    mainHandler.postDelayed(() -> { if (mediaPlayer != null) mediaPlayer.start(); }, 400);
+                    mainHandler.postDelayed(() -> { if (mediaPlayer != null) mediaPlayer.start(); }, 150);
+                    mainHandler.postDelayed(() -> { if (mediaPlayer != null) mediaPlayer.start(); }, 300);
                     break;
                 case WARNING:
-                    // 警告：兩聲
+                    // 警告：兩聲，間隔較短
                     mediaPlayer.start();
-                    mainHandler.postDelayed(() -> { if (mediaPlayer != null) mediaPlayer.start(); }, 500);
+                    mainHandler.postDelayed(() -> { if (mediaPlayer != null) mediaPlayer.start(); }, 350);
                     break;
             }
         }
         
-        // 語音
+        // 語音 - v2.4: 優化訊息
         if (cbVoiceAlert.isChecked() && textToSpeech != null) {
             String voiceMsg = status.message
-                .replace("⚠️", "危險")
+                .replace("⚠️", "注意，危險")
                 .replace("⚡", "注意")
                 .replace("✓", "")
-                .replace("秒碰撞", "秒內碰撞")
-                .split("，")[0]; // 只播報主要部分
+                .replace("秒碰撞", "秒")
+                .replace("米", "公尺") // 統一單位
+                .split(",")[0]; // 只播報主要部分
             
             textToSpeech.speak(voiceMsg, TextToSpeech.QUEUE_FLUSH, null, null);
         }

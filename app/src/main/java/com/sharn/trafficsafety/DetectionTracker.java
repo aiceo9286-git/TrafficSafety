@@ -21,11 +21,11 @@ public class DetectionTracker {
     
     private static final String TAG = "DetectionTracker";
     
-    // 追蹤參數
-    private static final int CONFIRMATION_FRAMES = 3;
-    private static final int LOST_TOLERANCE = 5;
-    private static final float IOU_THRESHOLD = 0.3f;
-    private static final float MAX_MATCH_DISTANCE = 200f; // 像素
+    // 追蹤參數 - v2.4 提高確認門檻減少誤報
+    private static final int CONFIRMATION_FRAMES = 4;  // 從 3 提高到 4 更穩定
+    private static final int LOST_TOLERANCE = 3;  // 從 5 降到 3 更快清除
+    private static final float IOU_THRESHOLD = 0.35f;  // 從 0.30 提高到 0.35 更嚴格匹配
+    private static final float MAX_MATCH_DISTANCE = 150f; // 從 200 降到 150 像素，限制跳躍
     
     private Map<Integer, TrackedObject> activeTracks = new HashMap<>();
     private int nextTrackId = 0;
