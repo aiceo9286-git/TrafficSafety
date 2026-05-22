@@ -26,6 +26,10 @@ public class OverlayView extends View {
     private Paint textBgPaint;
     private Paint trafficLightPaint;
     
+    // ⚠️ 修正：加入原始影像尺寸（用於座標轉換）
+    private int imageWidth = 1;
+    private int imageHeight = 1;
+    
     public OverlayView(Context context) {
         super(context);
         init();
@@ -62,6 +66,14 @@ public class OverlayView extends View {
     }
     
     /**
+     * ⚠️ 修正：設定原始影像尺寸（必須在 setDetections 前呼叫）
+     */
+    public void setImageSize(int width, int height) {
+        this.imageWidth = width;
+        this.imageHeight = height;
+    }
+    
+    /**
      * v2.5: 設定偵測結果（統一使用 DetectionResult）
      */
     public void setDetections(List<DetectionResult> detections, 
@@ -90,9 +102,32 @@ public class OverlayView extends View {
         }
     }
     
+    /**
+     * ⚠️ 修復：將原始影像座標轉換到畫布座標
+     */
+    private RectF mapRectToView(RectF src) {
+        float viewW = getWidth();
+        float viewH = getHeight();
+        
+        // centerCrop 縮放比值
+        float scale = Math.max(viewW / (float)imageWidth, viewH / (float)imageHeight);
+        float dx = (viewW - imageWidth * scale) / 2f;
+        float dy = (viewH - imageHeight * scale) / 2f;
+        
+        return new RectF(
+            src.left * scale + dx,
+            src.top * scale + dy,
+            src.right * scale + dx,
+            src.bottom * scale + dy
+        );
+    }
+    
     private void drawDetection(Canvas canvas, DetectionResult detection) {
-        RectF location = detection.getLocation();
-        if (location == null) return;
+        RectF srcLocation = detection.getLocation();
+        if (srcLocation == null) return;
+        
+        // ⚠️ 修復：座標轉換（原始影像座標 → 畫布座標）
+        RectF location = mapRectToView(srcLocation);
         
         // 根據類型決定顏色
         int color = getColorForLabel(detection.getLabel());
@@ -102,9 +137,10 @@ public class OverlayView extends View {
         // 繪製邊界框
         canvas.drawRect(location, boxPaint);
         
-        // 繪製標籤
+        // ⚠️ 修復：標籤使用中文顯示
+        String chineseLabel = getChineseLabel(detection.getLabel());
         String label = String.format("%s %.0f%%", 
-            detection.getLabel(), 
+            chineseLabel, 
             detection.getConfidence() * 100);
         
         float textWidth = textPaint.measureText(label);
@@ -121,17 +157,21 @@ public class OverlayView extends View {
     }
     
     private void drawTrafficLight(Canvas canvas, DetectionResult light) {
-        RectF location = light.getLocation();
-        if (location == null) return;
+        RectF srcLocation = light.getLocation();
+        if (srcLocation == null) return;
+        
+        // ⚠️ 修復：座標轉換
+        RectF location = mapRectToView(srcLocation);
         
         // 紅綠燈使用黃色粗框特別標記
         trafficLightPaint.setColor(Color.YELLOW);
         trafficLightPaint.setStrokeWidth(8f);
         canvas.drawRect(location, trafficLightPaint);
         
-        // 標籤
+        // ⚠️ 修復：標籤使用中文顯示
+        String chineseLabel = getChineseLabel(light.getLabel());
         String label = String.format("🚦 %s %.0f%%", 
-            light.getLabel(), 
+            chineseLabel, 
             light.getConfidence() * 100);
         
         float textWidth = textPaint.measureText(label);
@@ -151,6 +191,26 @@ public class OverlayView extends View {
         textPaint.setColor(Color.BLACK);
         canvas.drawText(label, textX + 10, textY - 10, textPaint);
         textPaint.setColor(Color.WHITE); // 恢復
+    }
+    
+    /**
+     * ⚠️ 修復：英文標籤轉中文（用在顯示時）
+     */
+    private String getChineseLabel(String label) {
+        if (label == null) return "";
+        String lower = label.toLowerCase();
+        switch (lower) {
+            case "person": return "行人";
+            case "bicycle": return "腳踏車";
+            case "car": return "汽車";
+            case "motorcycle": return "機車";
+            case "bus": return "公車";
+            case "train": return "火車";
+            case "truck": return "卡車";
+            case "traffic light": return "紅綠燈";
+            case "stop sign": return "停止標誌";
+            default: return label;
+        }
     }
     
     private int getColorForLabel(String label) {

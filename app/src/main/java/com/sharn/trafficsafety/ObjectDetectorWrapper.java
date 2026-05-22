@@ -45,21 +45,17 @@ public class ObjectDetectorWrapper {
     private static final float IOU_THRESHOLD = 0.40f;
     private static final int MAX_DETECTIONS = 50;  // 最大偵測數
     
-    // 只保留交通相關類別的索引
+    // 只保留交通相關類別的索引（修正：0是人，不是background）
     private static final int[] VALID_CLASS_INDICES = {
-        0,   // person
-        1,   // bicycle
-        2,   // car
-        3,   // motorcycle
-        4,   // airplane (skip)
-        5,   // bus
-        6,   // train
-        7,   // truck
-        8,   // boat (skip)
-        9,   // traffic light  ← 重要！
-        10,  // fire hydrant (skip)
-        11,  // stop sign  ← 重要！
-        // 其他類別根據需要添加
+        1,   // person ← 修正：0是background，1才是person
+        2,   // bicycle
+        3,   // car
+        4,   // motorcycle
+        6,   // bus
+        7,   // train
+        8,   // truck
+        10,  // traffic light
+        13   // stop sign ← 修正：不是11
     };
     
     // 91 類 COCO 標籤（根據模型內部標籤）
@@ -331,14 +327,13 @@ public class ObjectDetectorWrapper {
                 continue;  // 跳過未知類別
             }
             
-            // 轉換為中文標籤
-            String chineseLabel = CHINESE_LABELS.getOrDefault(label, label);
-            
+            // ⚠️ 修正：內部保留英文 label，只在顯示時轉中文
+            // 這樣後面邏輯（priority, tracker）可以用英文判斷
             RectF bbox = new RectF(x1, y1, x2, y2);
-            results.add(new DetectionResult(chineseLabel, maxScore, bbox));
+            results.add(new DetectionResult(label, maxScore, bbox));  // 用英文 label
             
             Log.v(TAG, String.format("偵測: %s (%.2f) [%.1f, %.1f, %.1f, %.1f]",
-                chineseLabel, maxScore, x1, y1, x2, y2));
+                label, maxScore, x1, y1, x2, y2));
         }
         
         return results;
@@ -371,7 +366,7 @@ public class ObjectDetectorWrapper {
                 
                 DetectionResult other = detections.get(j);
                 
-                // 只對相同類別應用 NMS
+                // 只對相同類別應用 NMS（現在都是英文標籤）
                 if (!current.getLabel().equals(other.getLabel())) {
                     continue;
                 }

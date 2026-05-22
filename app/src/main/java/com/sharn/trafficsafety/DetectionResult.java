@@ -81,7 +81,7 @@ public class DetectionResult {
     }
     
     /**
-     * 獲取中文標籤
+     * 獲取中文標籤（現在 label 是英文，所以正常對應）
      */
     private String getChineseLabel(String label) {
         String lowerLabel = label.toLowerCase();
@@ -89,13 +89,19 @@ public class DetectionResult {
             case "person": return "行人";
             case "people": return "行人";
             case "motorcycle": return "機車";
+            case "motorbike": return "機車";
             case "car": return "汽車";
             case "bus": return "公車";
             case "truck": return "卡車";
             case "bicycle": return "腳踏車";
+            case "bike": return "腳踏車";
+            case "traffic light": return "紅綠燈";
             case "trafficlight": return "紅綠燈";
             case "stoplight": return "號誌";
             case "signal": return "號誌";
+            case "stop sign": return "停止標誌";
+            case "train": return "火車";
+            case "airplane": return "飛機";
             default: return label;
         }
     }

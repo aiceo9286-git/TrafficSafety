@@ -298,11 +298,23 @@ public class DetectionTracker {
             }
         }
         
-        // Step 4: 移除真正丟失的追蹤
-        activeTracks.entrySet().removeIf(entry -> {
+        // ⚠️ 修復 Step 4: 移除真正丟失的追蹤（更快清除錯誤目標）
+        // 原本：追蹤超過5秒才刪除 → 現在：lostFrames 超過 LOST_TOLERANCE 就刪除
+        List<Integer> toRemove = new ArrayList<>();
+        for (Map.Entry<Integer, TrackedObject> entry : activeTracks.entrySet()) {
             TrackedObject track = entry.getValue();
-            return track.isLost() && track.getTrackingDuration() > 5000; // 追蹤超過5秒才刪除
-        });
+            // 如果已丟失且未確認，立即刪除
+            // 如果已確認但丟失超過容許幀數，也刪除
+            if (track.isLost()) {
+                if (!track.isConfirmed || track.lostFrames > LOST_TOLERANCE * 2) {
+                    toRemove.add(entry.getKey());
+                    Log.d(TAG, "移除丟失追蹤: " + track.id + " [" + track.label + "]");
+                }
+            }
+        }
+        for (Integer id : toRemove) {
+            activeTracks.remove(id);
+        }
         
         // Step 5: 確認新追蹤
         for (TrackedObject track : activeTracks.values()) {

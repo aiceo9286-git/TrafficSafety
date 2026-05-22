@@ -297,7 +297,8 @@ public class MainActivity extends AppCompatActivity {
         final SafetyStatus status = evaluateSafetyv21(tracked, imgWidth, imgHeight);
         
         mainHandler.post(() -> {
-            // v2.5: overlayView 的座標現在是正確的，直接顯示
+            // ⚠️ 修復：先設定影像尺寸，再設定偵測結果
+            overlayView.setImageSize(imgWidth, imgHeight);
             overlayView.setDetections(displayResults, trafficLightResults);
             updateStatus(status);
             

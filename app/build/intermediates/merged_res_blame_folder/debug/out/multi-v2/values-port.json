@@ -1,10 +1,10 @@
 {
     "logs": [
         {
-            "outputFile": "com.sharn.trafficsafety.app-mergeDebugResources-2:/values-port/values-port.xml",
+            "outputFile": "com.sharn.trafficsafety.app-mergeDebugResources-34:/values-port/values-port.xml",
             "map": [
                 {
-                    "source": "D:\\temp\\gradle_trafficsafety\\caches\\transforms-3\\d3212c486a88c20011f41f376a50a98a\\transformed\\appcompat-1.7.0\\res\\values-port\\values-port.xml",
+                    "source": "C:\\Users\\Admin\\.gradle\\caches\\transforms-3\\d3212c486a88c20011f41f376a50a98a\\transformed\\appcompat-1.7.0\\res\\values-port\\values-port.xml",
                     "from": {
                         "startLines": "2",
                         "startColumns": "4",
