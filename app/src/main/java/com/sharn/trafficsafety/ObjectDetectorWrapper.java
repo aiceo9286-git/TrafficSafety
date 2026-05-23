@@ -320,11 +320,11 @@ public class ObjectDetectorWrapper {
                 continue;
             }
             
-            // 取得標籤
-            String label = COCO_LABELS_80[bestClassIdx];
+            // ⚠️ 修正：先檢查索引有效性，再取標籤
             if (bestClassIdx < 0 || bestClassIdx >= COCO_LABELS_80.length) {
                 continue;  // 跳過無效類別索引
             }
+            String label = COCO_LABELS_80[bestClassIdx];
             
             // ⚠️ 修正：內部保留英文 label，只在顯示時轉中文
             // 這樣後面邏輯（priority, tracker）可以用英文判斷

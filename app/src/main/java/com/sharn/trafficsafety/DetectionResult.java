@@ -84,6 +84,7 @@ public class DetectionResult {
      * 獲取中文標籤（現在 label 是英文，所以正常對應）
      */
     private String getChineseLabel(String label) {
+        if (label == null) return "未知";
         String lowerLabel = label.toLowerCase();
         switch (lowerLabel) {
             case "person": return "行人";
