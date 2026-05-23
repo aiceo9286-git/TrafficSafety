@@ -38,46 +38,46 @@ public class ObjectDetectorWrapper {
     // 模型參數 - 根據實際模型結構
     private static final int INPUT_SIZE = 256;  // 模型輸入 256x256
     private static final int NUM_BOXES = 12276;  // 輸出框數量
-    private static final int NUM_CLASSES = 91;   // 模型內部是 91 類
+    private static final int NUM_CLASSES = 80;   // 模型是 80 類 COCO（不是 91）
     
     // 篩選參數 - 嚴格過濾減少誤報
     private static final float CONFIDENCE_THRESHOLD = 0.40f;  // 提高閾值
     private static final float IOU_THRESHOLD = 0.40f;
     private static final int MAX_DETECTIONS = 50;  // 最大偵測數
     
-    // 只保留交通相關類別的索引（修正：0是人，不是background）
+    // 只保留交通相關類別的索引（標準 COCO 80 類）
     private static final int[] VALID_CLASS_INDICES = {
-        1,   // person ← 修正：0是background，1才是person
-        2,   // bicycle
-        3,   // car
-        4,   // motorcycle
-        6,   // bus
-        7,   // train
-        8,   // truck
-        10,  // traffic light
-        13   // stop sign ← 修正：不是11
+        0,   // person
+        1,   // bicycle
+        2,   // car
+        3,   // motorcycle
+        5,   // bus
+        6,   // train
+        7,   // truck
+        9,   // traffic light
+        11   // stop sign
     };
     
-    // 91 類 COCO 標籤（根據模型內部標籤）
-    private static final String[] COCO_LABELS_91 = {
-        "background", "person", "bicycle", "car", "motorcycle", "airplane",
+    // 80 類 COCO 標籤（與 labels.txt 對應，0-based）
+    private static final String[] COCO_LABELS_80 = {
+        "person", "bicycle", "car", "motorcycle", "airplane",
         "bus", "train", "truck", "boat", "traffic light", "fire hydrant",
-        "???", "stop sign", "parking meter", "bench", "bird", "cat",
+        "stop sign", "parking meter", "bench", "bird", "cat",
         "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra",
-        "giraffe", "???", "backpack", "umbrella", "???", "???",
-        "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard",
-        "sports ball", "kite", "baseball bat", "baseball glove", "skateboard",
-        "surfboard", "tennis racket", "bottle", "???", "wine glass", "cup",
+        "giraffe", "backpack", "umbrella", "handbag", "tie",
+        "suitcase", "frisbee", "skis", "snowboard", "sports ball",
+        "kite", "baseball bat", "baseball glove", "skateboard",
+        "surfboard", "tennis racket", "bottle", "wine glass", "cup",
         "fork", "knife", "spoon", "bowl", "banana", "apple", "sandwich",
         "orange", "broccoli", "carrot", "hot dog", "pizza", "donut",
-        "cake", "chair", "couch", "potted plant", "bed", "???",
-        "dining table", "???", "???", "toilet", "???", "tv",
-        "laptop", "mouse", "remote", "keyboard", "cell phone", "microwave",
-        "oven", "toaster", "sink", "refrigerator", "???", "book",
+        "cake", "chair", "couch", "potted plant", "bed",
+        "dining table", "toilet", "tv", "laptop", "mouse",
+        "remote", "keyboard", "cell phone", "microwave",
+        "oven", "toaster", "sink", "refrigerator", "book",
         "clock", "vase", "scissors", "teddy bear", "hair drier", "toothbrush"
     };
     
-    // 中文標籤對應
+    // 中文標籤對應（直接使用英文 label 轉中文）
     private static final Map<String, String> CHINESE_LABELS = new HashMap<String, String>() {{
         put("person", "行人");
         put("bicycle", "腳踏車");
@@ -281,8 +281,8 @@ public class ObjectDetectorWrapper {
                 }
             }
             
-            // 如果分數太低，跳過
-            if (maxScore < CONFIDENCE_THRESHOLD) {
+            // 如果沒有找到有效類別或分數太低，跳過
+            if (bestClassIdx == -1 || maxScore < CONFIDENCE_THRESHOLD) {
                 continue;
             }
             
@@ -322,9 +322,9 @@ public class ObjectDetectorWrapper {
             }
             
             // 取得標籤
-            String label = COCO_LABELS_91[bestClassIdx];
-            if (label.equals("???")) {
-                continue;  // 跳過未知類別
+            String label = COCO_LABELS_80[bestClassIdx];
+            if (bestClassIdx < 0 || bestClassIdx >= COCO_LABELS_80.length) {
+                continue;  // 跳過無效類別索引
             }
             
             // ⚠️ 修正：內部保留英文 label，只在顯示時轉中文

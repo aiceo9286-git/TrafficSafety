@@ -276,7 +276,7 @@ public class MainActivity extends AppCompatActivity {
         // v2.5: 紅綠燈偵測使用與行人相同的模型（模型已包含 traffic light 類別）
         final List<DetectionResult> trafficLightResults = new ArrayList<>();
         for (DetectionResult result : rawResults) {
-            if (result.getLabel().equals("紅綠燈")) {
+            if (result.getLabel().equals("traffic light")) {
                 trafficLightResults.add(result);
             }
         }
