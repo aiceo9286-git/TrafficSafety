@@ -21,14 +21,13 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * v2.5 重構版物體偵測器
+ * v2.5.2 修復版物體偵測器
  * 
- * 修正項目（根據 ChatGPT 分析）：
- * 1. ✅ 支援多輸出解析 (boxes + scores)
- * 2. ✅ 修正座標格式 [ymin, xmin, ymax, xmax]
- * 3. ✅ 使用模型真正的 91 類 COCO 標籤
- * 4. ✅ 正確計算 confidence 和 class
- * 5. ✅ 過濾靜態物體和誤報
+ * 修正項目：
+ * 1. ✅ 修正 COCO 類別索引 - 使用 80 類標準索引（0-based）
+ * 2. ✅ 修正 NUM_CLASSES = 80（原誤設為 91）
+ * 3. ✅ 修正紅綠燈標籤比對使用英文 "traffic light"
+ * 4. ✅ 修正類別陣列名稱 COCO_LABELS_80（原誤用 _91）
  */ 
 public class ObjectDetectorWrapper {
     
