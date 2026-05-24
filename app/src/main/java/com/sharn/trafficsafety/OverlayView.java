@@ -194,23 +194,10 @@ public class OverlayView extends View {
     }
     
     /**
-     * ⚠️ 修復：英文標籤轉中文（用在顯示時）
+     * v2.6: 使用 LabelUtils 取得中文標籤
      */
     private String getChineseLabel(String label) {
-        if (label == null) return "";
-        String lower = label.toLowerCase();
-        switch (lower) {
-            case "person": return "行人";
-            case "bicycle": return "腳踏車";
-            case "car": return "汽車";
-            case "motorcycle": return "機車";
-            case "bus": return "公車";
-            case "train": return "火車";
-            case "truck": return "卡車";
-            case "traffic light": return "紅綠燈";
-            case "stop sign": return "停止標誌";
-            default: return label;
-        }
+        return LabelUtils.getChineseLabel(label);
     }
     
     private int getColorForLabel(String label) {

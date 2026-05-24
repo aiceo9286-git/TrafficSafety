@@ -36,10 +36,8 @@ import androidx.core.content.ContextCompat;
 import com.google.common.util.concurrent.ListenableFuture;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -368,7 +366,8 @@ public class MainActivity extends AppCompatActivity {
         if (distance <= 15f || (ttc < 2f && ttc > 0)) {
             level = SafetyLevel.DANGER;
             color = 0xFFE53935;
-            msg.append("⚠️ 危險！").append(getChineseLabel(mostDangerous.label));
+            // v2.6: 使用 LabelUtils 取得中文標籤
+            msg.append("⚠️ 危險！").append(LabelUtils.getChineseLabel(mostDangerous.label));
             if (ttc < 10) {
                 msg.append(String.format(" %.1f秒碰撞", ttc));
             } else {
@@ -377,7 +376,7 @@ public class MainActivity extends AppCompatActivity {
         } else if (distance <= 40f || (ttc < 4f && ttc > 0)) {
             level = SafetyLevel.WARNING;
             color = 0xFFFFA000;
-            msg.append("⚡ 注意 ").append(getChineseLabel(mostDangerous.label));
+            msg.append("⚡ 注意 ").append(LabelUtils.getChineseLabel(mostDangerous.label));
             msg.append(String.format(" %.0f米", distance));
             if (ttc < 10) {
                 msg.append(String.format(" %.0f秒", ttc));
@@ -385,12 +384,12 @@ public class MainActivity extends AppCompatActivity {
         } else {
             level = SafetyLevel.SAFE;
             color = 0xFF66BB6A;
-            msg.append("✓ ").append(getChineseLabel(mostDangerous.label));
+            msg.append("✓ ").append(LabelUtils.getChineseLabel(mostDangerous.label));
             msg.append(String.format(" %.0f米", distance));
         }
-        
+
         return new SafetyStatus(level, String.format("%.0f", distance), tracks.size(), 
-                               msg.toString(), getChineseLabel(mostDangerous.label), 
+                           msg.toString(), LabelUtils.getChineseLabel(mostDangerous.label),
                                color, ttc);
     }
     
@@ -410,28 +409,11 @@ public class MainActivity extends AppCompatActivity {
         }
     }
     
+    /**
+     * v2.6: 使用 LabelUtils 取得類別權重
+     */
     private float getClassWeight(String label) {
-        switch (label) {
-            case "person": return 0.8f;
-            case "motorcycle": return 0.9f;
-            case "car": return 1.0f;
-            case "truck": return 1.1f;
-            case "bus": return 1.1f;
-            case "bicycle": return 0.9f;
-            default: return 1.0f;
-        }
-    }
-    
-    private String getChineseLabel(String label) {
-        Map<String, String> chinese = new HashMap<String, String>() {{
-            put("person", "行人");
-            put("motorcycle", "機車");
-            put("car", "汽車");
-            put("bus", "公車");
-            put("truck", "卡車");
-            put("bicycle", "腳踏車");
-        }};
-        return chinese.getOrDefault(label, label);
+        return LabelUtils.getWeight(label);
     }
     
     /**

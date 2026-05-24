@@ -1,0 +1,62 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.5/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :app:clean
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :app:mergeDebugMlModels FROM-CACHE
+> Task :app:generateDebugMlModelClass FROM-CACHE
+> Task :app:javaPreCompileDebug FROM-CACHE
+> Task :app:generateDebugResValues FROM-CACHE
+> Task :app:checkDebugAarMetadata
+> Task :app:mapDebugSourceSetPaths
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:mergeDebugResources FROM-CACHE
+> Task :app:packageDebugResources FROM-CACHE
+> Task :app:parseDebugLocalResources FROM-CACHE
+> Task :app:createDebugCompatibleScreenManifests
+> Task :app:extractDeepLinksDebug FROM-CACHE
+
+> Task :app:processDebugMainManifest
+[org.tensorflow:tensorflow-lite:2.14.0] C:\Users\Admin\.gradle\caches\transforms-3\5adb51107b57fef5b18a7ea57a8eb377\transformed\jetified-tensorflow-lite-2.14.0\AndroidManifest.xml Warning:
+	Namespace 'org.tensorflow.lite' is used in multiple modules and/or libraries: org.tensorflow:tensorflow-lite:2.14.0, org.tensorflow:tensorflow-lite-api:2.14.0. Please ensure that all modules and libraries have a unique namespace. For more information, See https://developer.android.com/studio/build/configure-app-module#set-namespace
+[org.tensorflow:tensorflow-lite-support:0.4.4] C:\Users\Admin\.gradle\caches\transforms-3\6806f9d5d0db71bce4b4d327646f7997\transformed\jetified-tensorflow-lite-support-0.4.4\AndroidManifest.xml Warning:
+	Namespace 'org.tensorflow.lite.support' is used in multiple modules and/or libraries: org.tensorflow:tensorflow-lite-support:0.4.4, org.tensorflow:tensorflow-lite-support-api:0.4.4. Please ensure that all modules and libraries have a unique namespace. For more information, See https://developer.android.com/studio/build/configure-app-module#set-namespace
+
+> Task :app:processDebugManifest
+> Task :app:mergeDebugShaders FROM-CACHE
+> Task :app:compileDebugShaders NO-SOURCE
+> Task :app:generateDebugAssets UP-TO-DATE
+> Task :app:mergeDebugAssets FROM-CACHE
+> Task :app:processDebugManifestForPackage
+> Task :app:compressDebugAssets FROM-CACHE
+> Task :app:desugarDebugFileDependencies FROM-CACHE
+> Task :app:processDebugJavaRes NO-SOURCE
+> Task :app:mergeDebugJavaResource
+> Task :app:processDebugResources
+> Task :app:checkDebugDuplicateClasses
+
+> Task :app:compileDebugJavaWithJavac
+Note: D:\TrafficSafety\app\src\main\java\com\sharn\trafficsafety\MainActivity.java uses or overrides a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+
+> Task :app:dexBuilderDebug
+> Task :app:mergeDebugGlobalSynthetics FROM-CACHE
+> Task :app:mergeExtDexDebug FROM-CACHE
+> Task :app:mergeLibDexDebug FROM-CACHE
+> Task :app:mergeDebugJniLibFolders FROM-CACHE
+> Task :app:mergeProjectDexDebug
+> Task :app:validateSigningDebug
+> Task :app:writeDebugAppMetadata
+> Task :app:writeDebugSigningConfigVersions
+> Task :app:mergeDebugNativeLibs
+
+> Task :app:stripDebugDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libimage_processing_util_jni.so, libtask_vision_jni.so, libtensorflowlite_jni.so.
+
+> Task :app:packageDebug
+> Task :app:createDebugApkListingFileRedirect
+> Task :app:assembleDebug
+
+BUILD SUCCESSFUL in 2m 16s
+36 actionable tasks: 20 executed, 16 from cache

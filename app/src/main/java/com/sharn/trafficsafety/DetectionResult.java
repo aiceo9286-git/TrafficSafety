@@ -63,10 +63,10 @@ public class DetectionResult {
     }
     
     /**
-     * 獲取警示訊息
+     * v2.6: 使用 LabelUtils 取得警示訊息
      */
     public String getAlertMessage() {
-        String chineseLabel = getChineseLabel(label);
+        String chineseLabel = LabelUtils.getChineseLabel(label);
         
         if (isPedestrian()) {
             if (confidence > 0.8) {
@@ -81,32 +81,12 @@ public class DetectionResult {
     }
     
     /**
-     * 獲取中文標籤（現在 label 是英文，所以正常對應）
+     * 獲取中文標籤
      */
-    private String getChineseLabel(String label) {
-        if (label == null) return "未知";
-        String lowerLabel = label.toLowerCase();
-        switch (lowerLabel) {
-            case "person": return "行人";
-            case "people": return "行人";
-            case "motorcycle": return "機車";
-            case "motorbike": return "機車";
-            case "car": return "汽車";
-            case "bus": return "公車";
-            case "truck": return "卡車";
-            case "bicycle": return "腳踏車";
-            case "bike": return "腳踏車";
-            case "traffic light": return "紅綠燈";
-            case "trafficlight": return "紅綠燈";
-            case "stoplight": return "號誌";
-            case "signal": return "號誌";
-            case "stop sign": return "停止標誌";
-            case "train": return "火車";
-            case "airplane": return "飛機";
-            default: return label;
-        }
+    public String getChineseLabel() {
+        return LabelUtils.getChineseLabel(label);
     }
-    
+
     @Override
     public String toString() {
         return String.format("%s (%.1f%%)", label, confidence * 100);
