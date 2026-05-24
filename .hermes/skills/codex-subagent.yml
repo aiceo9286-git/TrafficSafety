@@ -1,0 +1,64 @@
+name: codex-subagent
+description: |
+  將 Codex CLI 作為 sub-agent 使用
+  需要配合 codex_bridge.py 腳本執行
+
+triggers:
+  - 需要codex幫忙
+  - 讓codex來做
+  - 派codex去
+  - 使用codex
+
+steps:
+  1: |
+    確認 codex_bridge.py 存在:
+    ls -la /mnt/d/TrafficSafety/scripts/codex_bridge.py
+
+  2: |
+    使用 delegate_task 啟動 Codex sub-agent:
+    
+    delegate_task(
+        goal="Your task description here",
+        context="Context for the task",
+        role="leaf",
+        acp_command="python3",
+        acp_args=["/mnt/d/TrafficSafety/scripts/codex_bridge.py"],
+        toolsets=["file", "terminal", "search"]
+    )
+
+tools:
+  - codex_exec: |
+      執行 Codex CLI 任務
+      Arguments:
+        - prompt: 要給 Codex 的任務描述
+
+  - file_read: |
+      讀取專案檔案
+      Arguments:
+        - path: 相對於 WORK_DIR 的路徑
+
+  - file_write: |
+      寫入專案檔案
+      Arguments:
+        - path: 相對於 WORK_DIR 的路徑
+        - content: 檔案內容
+
+  - shell: |
+      執行 shell 命令
+      Arguments:
+        - command: 命令字串
+
+caveats:
+  - Codex CLI 每次執行是獨立進程，沒有狀態保留
+  - 任務描述需要完整自包含
+  - 檔案操作會實際修改磁碟
+
+example: |
+  # 讓 Codex 修復程式碼
+  delegate_task(
+      goal="Refactor all getChineseLabel() methods to use LabelUtils",
+      context="This is a TrafficSafety Android app. LabelUtils already exists.",
+      role="leaf",
+      acp_command="python3",
+      acp_args=["/mnt/d/TrafficSafety/scripts/codex_bridge.py"]
+  )
