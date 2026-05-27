@@ -3,9 +3,9 @@ package com.sharn.trafficsafety;
 import android.graphics.RectF;
 
 /**
- * 偵測結果資料類別
+ * 不可變偵測結果資料類別。
  */
-public class DetectionResult {
+public final class DetectionResult {
     private final String label;
     private final float confidence;
     private final RectF location;
@@ -18,7 +18,7 @@ public class DetectionResult {
     public DetectionResult(String label, float confidence, RectF location, int trackingId) {
         this.label = label;
         this.confidence = confidence;
-        this.location = location;
+        this.location = location != null ? new RectF(location) : null;
         this.trackingId = trackingId;
     }
     
@@ -31,7 +31,7 @@ public class DetectionResult {
     }
     
     public RectF getLocation() { 
-        return location; 
+        return location != null ? new RectF(location) : null;
     }
     
     public int getTrackingId() {
@@ -42,24 +42,14 @@ public class DetectionResult {
      * 是否為行人
      */
     public boolean isPedestrian() {
-        String lowerLabel = label.toLowerCase();
-        return lowerLabel.contains("person") || 
-               lowerLabel.contains("pedestrian") ||
-               lowerLabel.contains("people") ||
-               lowerLabel.contains("man") ||
-               lowerLabel.contains("woman");
+        return LabelUtils.isPedestrian(label);
     }
     
     /**
      * 是否為交通號誌
      */
     public boolean isTrafficLight() {
-        String lowerLabel = label.toLowerCase();
-        return lowerLabel.contains("traffic light") ||
-               lowerLabel.contains("traffic_light") ||
-               lowerLabel.contains("trafficlight") ||
-               lowerLabel.contains("stoplight") ||
-               lowerLabel.contains("signal");
+        return LabelUtils.isTrafficLight(label);
     }
     
     /**
