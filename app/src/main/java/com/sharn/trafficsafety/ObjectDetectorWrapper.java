@@ -21,13 +21,13 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * v2.5.2 修復版物體偵測器
+ * v2.6.0 修復版物體偵測器
  * 
  * 修正項目：
- * 1. ✅ 修正 COCO 類別索引 - 使用 80 類標準索引（0-based）
- * 2. ✅ 修正 NUM_CLASSES = 80（原誤設為 91）
+ * 1. ✅ 修正 COCO 類別索引 - 使用模型 91 個 score slot 的 COCO id 索引
+ * 2. ✅ 依模型實際輸出形狀配置緩衝區，避免 TFLite 輸出 shape mismatch
  * 3. ✅ 修正紅綠燈標籤比對使用英文 "traffic light"
- * 4. ✅ 修正類別陣列名稱 COCO_LABELS_80（原誤用 _91）
+ * 4. ✅ 只將交通相關類別轉成 app 內部使用的 80 類 COCO 英文標籤
  */ 
 public class ObjectDetectorWrapper {
     
@@ -36,45 +36,39 @@ public class ObjectDetectorWrapper {
     
     // 模型參數 - 根據實際模型結構
     private static final int INPUT_SIZE = 256;  // 模型輸入 256x256
-    private static final int NUM_BOXES = 12276;  // 輸出框數量
-    private static final int NUM_CLASSES = 80;   // 模型是 80 類 COCO（不是 91）
+    private static final int BOX_COORDINATES = 4;
     
     // 篩選參數 - 嚴格過濾減少誤報
     private static final float CONFIDENCE_THRESHOLD = 0.40f;  // 提高閾值
     private static final float IOU_THRESHOLD = 0.40f;
     private static final int MAX_DETECTIONS = 50;  // 最大偵測數
     
-    // 只保留交通相關類別的索引（標準 COCO 80 類）
+    // 只保留交通相關類別的 score 索引。
+    // 此模型輸出 91 個 score slot，索引對應 TensorFlow Object Detection API COCO id。
+    // 0 是背景/未使用，person 從 1 開始，部分 COCO id 會跳號。
     private static final int[] VALID_CLASS_INDICES = {
-        0,   // person
-        1,   // bicycle
-        2,   // car
-        3,   // motorcycle
-        5,   // bus
-        6,   // train
-        7,   // truck
-        9,   // traffic light
-        11   // stop sign
+        1,   // person
+        2,   // bicycle
+        3,   // car
+        4,   // motorcycle
+        6,   // bus
+        7,   // train
+        8,   // truck
+        10,  // traffic light
+        13   // stop sign
     };
-    
-    // 80 類 COCO 標籤（與 labels.txt 對應，0-based）
-    private static final String[] COCO_LABELS_80 = {
-        "person", "bicycle", "car", "motorcycle", "airplane",
-        "bus", "train", "truck", "boat", "traffic light", "fire hydrant",
-        "stop sign", "parking meter", "bench", "bird", "cat",
-        "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra",
-        "giraffe", "backpack", "umbrella", "handbag", "tie",
-        "suitcase", "frisbee", "skis", "snowboard", "sports ball",
-        "kite", "baseball bat", "baseball glove", "skateboard",
-        "surfboard", "tennis racket", "bottle", "wine glass", "cup",
-        "fork", "knife", "spoon", "bowl", "banana", "apple", "sandwich",
-        "orange", "broccoli", "carrot", "hot dog", "pizza", "donut",
-        "cake", "chair", "couch", "potted plant", "bed",
-        "dining table", "toilet", "tv", "laptop", "mouse",
-        "remote", "keyboard", "cell phone", "microwave",
-        "oven", "toaster", "sink", "refrigerator", "book",
-        "clock", "vase", "scissors", "teddy bear", "hair drier", "toothbrush"
-    };
+
+    private static final Map<Integer, String> SCORE_CLASS_LABELS = new HashMap<Integer, String>() {{
+        put(1, "person");
+        put(2, "bicycle");
+        put(3, "car");
+        put(4, "motorcycle");
+        put(6, "bus");
+        put(7, "train");
+        put(8, "truck");
+        put(10, "traffic light");
+        put(13, "stop sign");
+    }};
     
     // 中文標籤對應（直接使用英文 label 轉中文）
     private static final Map<String, String> CHINESE_LABELS = new HashMap<String, String>() {{
@@ -104,32 +98,34 @@ public class ObjectDetectorWrapper {
     
     private Interpreter interpreter;
     private boolean modelLoaded = false;
+    private int numBoxes = 0;
+    private int numScoreClasses = 0;
     
     // 輸入緩衝區
     private ByteBuffer inputBuffer;
     
     // 輸出緩衝區 - 多輸出
-    private float[][][] boxesOutput;   // [1, 12276, 4]
-    private float[][][] scoresOutput;  // [1, 12276, 91]
+    private float[][][] boxesOutput;   // [1, numBoxes, 4]
+    private float[][][] scoresOutput;  // [1, numBoxes, numScoreClasses]
     
     public ObjectDetectorWrapper(Context context) {
         try {
-            Log.d(TAG, "=== v2.5 初始化偵測器（重構版）===");
+            Log.d(TAG, "=== v2.6 初始化偵測器（穩定推論版）===");
             
             // 載入模型
-            AssetFileDescriptor fd = context.getAssets().openFd(MODEL_FILE);
-            FileInputStream fis = new FileInputStream(fd.getFileDescriptor());
-            FileChannel channel = fis.getChannel();
-            MappedByteBuffer buffer = channel.map(
-                FileChannel.MapMode.READ_ONLY,
-                fd.getStartOffset(),
-                fd.getDeclaredLength()
-            );
-            
             Interpreter.Options options = new Interpreter.Options();
             options.setNumThreads(4);
-            
-            interpreter = new Interpreter(buffer, options);
+
+            try (AssetFileDescriptor fd = context.getAssets().openFd(MODEL_FILE);
+                 FileInputStream fis = new FileInputStream(fd.getFileDescriptor())) {
+                FileChannel channel = fis.getChannel();
+                MappedByteBuffer buffer = channel.map(
+                    FileChannel.MapMode.READ_ONLY,
+                    fd.getStartOffset(),
+                    fd.getDeclaredLength()
+                );
+                interpreter = new Interpreter(buffer, options);
+            }
             
             // 驗證模型形狀
             verifyModelShape();
@@ -139,15 +135,15 @@ public class ObjectDetectorWrapper {
             inputBuffer = ByteBuffer.allocateDirect(inputBufferSize);
             inputBuffer.order(ByteOrder.nativeOrder());
             
-            // 初始化輸出緩衝區 - 多輸出
-            boxesOutput = new float[1][NUM_BOXES][4];   // [ymin, xmin, ymax, xmax]
-            scoresOutput = new float[1][NUM_BOXES][NUM_CLASSES];
+            // 初始化輸出緩衝區 - 多輸出，必須符合模型實際 shape
+            boxesOutput = new float[1][numBoxes][BOX_COORDINATES];   // [ymin, xmin, ymax, xmax]
+            scoresOutput = new float[1][numBoxes][numScoreClasses];
             
             modelLoaded = true;
-            Log.d(TAG, "✅ v2.5 模型載入成功!");
+            Log.d(TAG, "✅ v2.6 模型載入成功!");
             Log.d(TAG, "   輸入: [1, " + INPUT_SIZE + ", " + INPUT_SIZE + ", 3]");
-            Log.d(TAG, "   輸出 boxes: [1, " + NUM_BOXES + ", 4]");
-            Log.d(TAG, "   輸出 scores: [1, " + NUM_BOXES + ", " + NUM_CLASSES + "]");
+            Log.d(TAG, "   輸出 boxes: [1, " + numBoxes + ", 4]");
+            Log.d(TAG, "   輸出 scores: [1, " + numBoxes + ", " + numScoreClasses + "]");
             
         } catch (Exception e) {
             Log.e(TAG, "❌ 模型載入失敗: " + e.getMessage());
@@ -163,14 +159,39 @@ public class ObjectDetectorWrapper {
         // 檢查輸入
         int[] inputShape = interpreter.getInputTensor(0).shape();
         Log.d(TAG, "模型輸入形狀: " + shapeToString(inputShape));
+        if (inputShape.length != 4 || inputShape[1] != INPUT_SIZE
+            || inputShape[2] != INPUT_SIZE || inputShape[3] != 3) {
+            throw new IllegalStateException("不支援的模型輸入形狀: " + shapeToString(inputShape));
+        }
         
         // 檢查輸出數量
         int outputCount = interpreter.getOutputTensorCount();
         Log.d(TAG, "模型輸出數量: " + outputCount);
+        if (outputCount < 2) {
+            throw new IllegalStateException("模型至少需要 boxes 和 scores 兩個輸出");
+        }
         
         for (int i = 0; i < outputCount; i++) {
             int[] outputShape = interpreter.getOutputTensor(i).shape();
             Log.d(TAG, "輸出 " + i + " 形狀: " + shapeToString(outputShape));
+        }
+
+        int[] boxesShape = interpreter.getOutputTensor(0).shape();
+        int[] scoresShape = interpreter.getOutputTensor(1).shape();
+        if (boxesShape.length != 3 || scoresShape.length != 3
+            || boxesShape[0] != 1 || scoresShape[0] != 1
+            || boxesShape[2] != BOX_COORDINATES
+            || boxesShape[1] != scoresShape[1]) {
+            throw new IllegalStateException("不支援的模型輸出形狀 boxes="
+                + shapeToString(boxesShape) + ", scores=" + shapeToString(scoresShape));
+        }
+
+        numBoxes = boxesShape[1];
+        numScoreClasses = scoresShape[2];
+        for (int classIdx : VALID_CLASS_INDICES) {
+            if (classIdx >= numScoreClasses) {
+                throw new IllegalStateException("模型 score 類別數不足: " + numScoreClasses);
+            }
         }
     }
     
@@ -229,6 +250,9 @@ public class ObjectDetectorWrapper {
         
         int[] pixels = new int[INPUT_SIZE * INPUT_SIZE];
         resized.getPixels(pixels, 0, INPUT_SIZE, 0, 0, INPUT_SIZE, INPUT_SIZE);
+        if (resized != bitmap) {
+            resized.recycle();
+        }
         
         // 轉換為 float32 RGB，歸一化至 [0, 1]
         for (int pixel : pixels) {
@@ -260,12 +284,8 @@ public class ObjectDetectorWrapper {
      */
     private List<DetectionResult> parseOutputs(int imgWidth, int imgHeight) {
         List<DetectionResult> results = new ArrayList<>();
-        
-        // 計算縮放比例（從 256x256 回到原始尺寸）
-        float scaleX = (float) imgWidth / INPUT_SIZE;
-        float scaleY = (float) imgHeight / INPUT_SIZE;
-        
-        for (int i = 0; i < NUM_BOXES; i++) {
+
+        for (int i = 0; i < numBoxes; i++) {
             // 取得分數陣列
             float[] scores = scoresOutput[0][i];
             
@@ -274,7 +294,7 @@ public class ObjectDetectorWrapper {
             int bestClassIdx = -1;
             
             for (int classIdx : VALID_CLASS_INDICES) {
-                if (classIdx < NUM_CLASSES && scores[classIdx] > maxScore) {
+                if (classIdx < numScoreClasses && scores[classIdx] > maxScore) {
                     maxScore = scores[classIdx];
                     bestClassIdx = classIdx;
                 }
@@ -320,11 +340,10 @@ public class ObjectDetectorWrapper {
                 continue;
             }
             
-            // ⚠️ 修正：先檢查索引有效性，再取標籤
-            if (bestClassIdx < 0 || bestClassIdx >= COCO_LABELS_80.length) {
+            String label = SCORE_CLASS_LABELS.get(bestClassIdx);
+            if (label == null) {
                 continue;  // 跳過無效類別索引
             }
-            String label = COCO_LABELS_80[bestClassIdx];
             
             // ⚠️ 修正：內部保留英文 label，只在顯示時轉中文
             // 這樣後面邏輯（priority, tracker）可以用英文判斷
@@ -428,6 +447,7 @@ public class ObjectDetectorWrapper {
             interpreter.close();
             interpreter = null;
         }
+        modelLoaded = false;
     }
     
     public boolean isModelLoaded() {
