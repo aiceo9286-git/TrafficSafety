@@ -72,17 +72,29 @@ public class VideoTestActivity extends AppCompatActivity {
         frameText.setPadding(0, dp(8), 0, dp(8));
         root.addView(frameText, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
+        // 横向佈局：左邊影片，右邊資訊
+        LinearLayout contentLayout = new LinearLayout(this);
+        contentLayout.setOrientation(LinearLayout.HORIZONTAL);
+        root.addView(contentLayout, new LinearLayout.LayoutParams(MATCH_PARENT, dp(400)));
+
+        // 左側：影片預覽
         previewImage = new ImageView(this);
         previewImage.setAdjustViewBounds(true);
         previewImage.setScaleType(ImageView.ScaleType.FIT_CENTER);
         previewImage.setBackgroundColor(Color.BLACK);
-        root.addView(previewImage, new LinearLayout.LayoutParams(MATCH_PARENT, dp(260)));
+        contentLayout.addView(previewImage, new LinearLayout.LayoutParams(0, MATCH_PARENT, 1.5f));
 
+        // 右側：資訊面板
+        LinearLayout infoPanel = new LinearLayout(this);
+        infoPanel.setOrientation(LinearLayout.VERTICAL);
+        infoPanel.setPadding(dp(16), 0, 0, 0);
+        contentLayout.addView(infoPanel, new LinearLayout.LayoutParams(0, MATCH_PARENT, 1.0f));
+
+        // 按�列
         LinearLayout buttons = new LinearLayout(this);
         buttons.setOrientation(LinearLayout.HORIZONTAL);
         buttons.setGravity(Gravity.CENTER_VERTICAL);
-        buttons.setPadding(0, dp(12), 0, dp(12));
-        root.addView(buttons, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+        infoPanel.addView(buttons, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
         runButton = new Button(this);
         runButton.setText("開始測試");
@@ -95,12 +107,15 @@ public class VideoTestActivity extends AppCompatActivity {
         stopParams.setMarginStart(dp(8));
         buttons.addView(stopButton, stopParams);
 
+        // 偵測結果
         detectionText = textView("逐幀偵測結果會顯示在這裡", 14, Color.WHITE, false);
-        root.addView(detectionText, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+        detectionText.setPadding(0, dp(12), 0, 0);
+        infoPanel.addView(detectionText, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
+        // 統計結果
         summaryText = textView("統計: -", 14, Color.rgb(180, 220, 255), false);
         summaryText.setPadding(0, dp(12), 0, 0);
-        root.addView(summaryText, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+        infoPanel.addView(summaryText, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
         return scrollView;
     }
