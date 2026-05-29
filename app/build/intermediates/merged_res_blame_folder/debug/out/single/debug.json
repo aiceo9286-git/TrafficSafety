@@ -1,46 +1,50 @@
 [
     {
+        "merged": "C:\\Users\\Admin\\.gradle\\daemon\\8.5\\com.sharn.trafficsafety.app-merged_res-36:\\mipmap-xxhdpi_ic_launcher.png.flat",
+        "source": "C:\\Users\\Admin\\.gradle\\daemon\\8.5\\com.sharn.trafficsafety.app-main-38:\\mipmap-xxhdpi\\ic_launcher.png"
+    },
+    {
+        "merged": "C:\\Users\\Admin\\.gradle\\daemon\\8.5\\com.sharn.trafficsafety.app-merged_res-36:\\layout_activity_main.xml.flat",
+        "source": "C:\\Users\\Admin\\.gradle\\daemon\\8.5\\com.sharn.trafficsafety.app-main-38:\\layout\\activity_main.xml"
+    },
+    {
+        "merged": "C:\\Users\\Admin\\.gradle\\daemon\\8.5\\com.sharn.trafficsafety.app-merged_res-36:\\mipmap-xxxhdpi_ic_launcher.png.flat",
+        "source": "C:\\Users\\Admin\\.gradle\\daemon\\8.5\\com.sharn.trafficsafety.app-main-38:\\mipmap-xxxhdpi\\ic_launcher.png"
+    },
+    {
+        "merged": "C:\\Users\\Admin\\.gradle\\daemon\\8.5\\com.sharn.trafficsafety.app-merged_res-36:\\mipmap-xhdpi_ic_launcher_round.png.flat",
+        "source": "C:\\Users\\Admin\\.gradle\\daemon\\8.5\\com.sharn.trafficsafety.app-main-38:\\mipmap-xhdpi\\ic_launcher_round.png"
+    },
+    {
+        "merged": "C:\\Users\\Admin\\.gradle\\daemon\\8.5\\com.sharn.trafficsafety.app-merged_res-36:\\mipmap-mdpi_ic_launcher.png.flat",
+        "source": "C:\\Users\\Admin\\.gradle\\daemon\\8.5\\com.sharn.trafficsafety.app-main-38:\\mipmap-mdpi\\ic_launcher.png"
+    },
+    {
+        "merged": "C:\\Users\\Admin\\.gradle\\daemon\\8.5\\com.sharn.trafficsafety.app-merged_res-36:\\mipmap-hdpi_ic_launcher_round.png.flat",
+        "source": "C:\\Users\\Admin\\.gradle\\daemon\\8.5\\com.sharn.trafficsafety.app-main-38:\\mipmap-hdpi\\ic_launcher_round.png"
+    },
+    {
+        "merged": "C:\\Users\\Admin\\.gradle\\daemon\\8.5\\com.sharn.trafficsafety.app-merged_res-36:\\mipmap-hdpi_ic_launcher.png.flat",
+        "source": "C:\\Users\\Admin\\.gradle\\daemon\\8.5\\com.sharn.trafficsafety.app-main-38:\\mipmap-hdpi\\ic_launcher.png"
+    },
+    {
         "merged": "com.sharn.trafficsafety.app-merged_res-36:/layout_activity_main.xml.flat",
         "source": "com.sharn.trafficsafety.app-main-38:/layout/activity_main.xml"
     },
     {
-        "merged": "com.sharn.trafficsafety.app-merged_res-36:/mipmap-mdpi_ic_launcher_round.png.flat",
-        "source": "com.sharn.trafficsafety.app-main-38:/mipmap-mdpi/ic_launcher_round.png"
+        "merged": "C:\\Users\\Admin\\.gradle\\daemon\\8.5\\com.sharn.trafficsafety.app-merged_res-36:\\mipmap-xxhdpi_ic_launcher_round.png.flat",
+        "source": "C:\\Users\\Admin\\.gradle\\daemon\\8.5\\com.sharn.trafficsafety.app-main-38:\\mipmap-xxhdpi\\ic_launcher_round.png"
     },
     {
-        "merged": "com.sharn.trafficsafety.app-merged_res-36:/mipmap-mdpi_ic_launcher.png.flat",
-        "source": "com.sharn.trafficsafety.app-main-38:/mipmap-mdpi/ic_launcher.png"
+        "merged": "C:\\Users\\Admin\\.gradle\\daemon\\8.5\\com.sharn.trafficsafety.app-merged_res-36:\\mipmap-mdpi_ic_launcher_round.png.flat",
+        "source": "C:\\Users\\Admin\\.gradle\\daemon\\8.5\\com.sharn.trafficsafety.app-main-38:\\mipmap-mdpi\\ic_launcher_round.png"
     },
     {
-        "merged": "com.sharn.trafficsafety.app-merged_res-36:/mipmap-xxxhdpi_ic_launcher.png.flat",
-        "source": "com.sharn.trafficsafety.app-main-38:/mipmap-xxxhdpi/ic_launcher.png"
+        "merged": "C:\\Users\\Admin\\.gradle\\daemon\\8.5\\com.sharn.trafficsafety.app-merged_res-36:\\mipmap-xxxhdpi_ic_launcher_round.png.flat",
+        "source": "C:\\Users\\Admin\\.gradle\\daemon\\8.5\\com.sharn.trafficsafety.app-main-38:\\mipmap-xxxhdpi\\ic_launcher_round.png"
     },
     {
-        "merged": "com.sharn.trafficsafety.app-merged_res-36:/mipmap-xhdpi_ic_launcher.png.flat",
-        "source": "com.sharn.trafficsafety.app-main-38:/mipmap-xhdpi/ic_launcher.png"
-    },
-    {
-        "merged": "com.sharn.trafficsafety.app-merged_res-36:/mipmap-xxhdpi_ic_launcher_round.png.flat",
-        "source": "com.sharn.trafficsafety.app-main-38:/mipmap-xxhdpi/ic_launcher_round.png"
-    },
-    {
-        "merged": "com.sharn.trafficsafety.app-merged_res-36:/mipmap-xxhdpi_ic_launcher.png.flat",
-        "source": "com.sharn.trafficsafety.app-main-38:/mipmap-xxhdpi/ic_launcher.png"
-    },
-    {
-        "merged": "com.sharn.trafficsafety.app-merged_res-36:/mipmap-xhdpi_ic_launcher_round.png.flat",
-        "source": "com.sharn.trafficsafety.app-main-38:/mipmap-xhdpi/ic_launcher_round.png"
-    },
-    {
-        "merged": "com.sharn.trafficsafety.app-merged_res-36:/mipmap-hdpi_ic_launcher_round.png.flat",
-        "source": "com.sharn.trafficsafety.app-main-38:/mipmap-hdpi/ic_launcher_round.png"
-    },
-    {
-        "merged": "com.sharn.trafficsafety.app-merged_res-36:/mipmap-xxxhdpi_ic_launcher_round.png.flat",
-        "source": "com.sharn.trafficsafety.app-main-38:/mipmap-xxxhdpi/ic_launcher_round.png"
-    },
-    {
-        "merged": "com.sharn.trafficsafety.app-merged_res-36:/mipmap-hdpi_ic_launcher.png.flat",
-        "source": "com.sharn.trafficsafety.app-main-38:/mipmap-hdpi/ic_launcher.png"
+        "merged": "C:\\Users\\Admin\\.gradle\\daemon\\8.5\\com.sharn.trafficsafety.app-merged_res-36:\\mipmap-xhdpi_ic_launcher.png.flat",
+        "source": "C:\\Users\\Admin\\.gradle\\daemon\\8.5\\com.sharn.trafficsafety.app-main-38:\\mipmap-xhdpi\\ic_launcher.png"
     }
 ]

@@ -5,6 +5,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
+import android.util.TypedValue;
 import android.util.AttributeSet;
 import android.view.View;
 
@@ -22,9 +23,24 @@ public class OverlayView extends View {
     private List<DetectionResult> trafficLights = new ArrayList<>();
     
     private Paint boxPaint;
+    private Paint boxFillPaint;
     private Paint textPaint;
     private Paint textBgPaint;
+    private Paint badgeTextPaint;
+    private Paint badgeBgPaint;
     private Paint trafficLightPaint;
+    private Paint trafficLightFillPaint;
+    private Paint summaryBgPaint;
+
+    private float labelPaddingH;
+    private float labelPaddingV;
+    private float labelCornerRadius;
+    private float badgeRadius;
+    private float summaryMargin;
+    private float summaryTopOffset;
+    private float summaryLineHeight;
+    private int maxSummaryItems = 6;
+    private boolean useSideSummary = true;
     
     // ⚠️ 修正：加入原始影像尺寸（用於座標轉換）
     private int imageWidth = 1;
@@ -46,27 +62,59 @@ public class OverlayView extends View {
     }
     
     private void init() {
+        float boxStrokeWidth = dp(2);
+        labelPaddingH = dp(4);
+        labelPaddingV = dp(2);
+        labelCornerRadius = dp(4);
+        badgeRadius = dp(9);
+        summaryMargin = dp(8);
+        summaryTopOffset = dp(64);
+        summaryLineHeight = sp(18);
+
         boxPaint = new Paint();
         boxPaint.setStyle(Paint.Style.STROKE);
-        // v2.7.0 修正：從 6f 減小為 4f，減少視覺干擾
-        boxPaint.setStrokeWidth(4f);
+        boxPaint.setStrokeWidth(boxStrokeWidth);
+        boxPaint.setAntiAlias(true);
+
+        boxFillPaint = new Paint();
+        boxFillPaint.setStyle(Paint.Style.FILL);
+        boxFillPaint.setAlpha(28);
         
         textPaint = new Paint();
         textPaint.setColor(Color.WHITE);
-        // v2.7.0 修正：從 36f 減小為 28f，減少文字佔用的畫面空間
-        textPaint.setTextSize(28f);
+        textPaint.setTextSize(sp(12));
         textPaint.setStyle(Paint.Style.FILL);
         textPaint.setAntiAlias(true);
         
         textBgPaint = new Paint();
         textBgPaint.setStyle(Paint.Style.FILL);
-        // v2.7.0 修正：從 200 減小為 160，降低背景遮擋
-        textBgPaint.setAlpha(160);
+        textBgPaint.setAlpha(145);
+
+        badgeTextPaint = new Paint();
+        badgeTextPaint.setColor(Color.WHITE);
+        badgeTextPaint.setTextSize(sp(10));
+        badgeTextPaint.setTextAlign(Paint.Align.CENTER);
+        badgeTextPaint.setStyle(Paint.Style.FILL);
+        badgeTextPaint.setAntiAlias(true);
+
+        badgeBgPaint = new Paint();
+        badgeBgPaint.setStyle(Paint.Style.FILL);
+        badgeBgPaint.setAlpha(190);
         
         trafficLightPaint = new Paint();
         trafficLightPaint.setStyle(Paint.Style.STROKE);
-        // v2.7.0 修正：從 8f 減小為 6f
-        trafficLightPaint.setStrokeWidth(6f);
+        trafficLightPaint.setStrokeWidth(boxStrokeWidth);
+        trafficLightPaint.setAntiAlias(true);
+
+        trafficLightFillPaint = new Paint();
+        trafficLightFillPaint.setStyle(Paint.Style.FILL);
+        trafficLightFillPaint.setColor(Color.YELLOW);
+        trafficLightFillPaint.setAlpha(36);
+
+        summaryBgPaint = new Paint();
+        summaryBgPaint.setColor(Color.BLACK);
+        summaryBgPaint.setAlpha(115);
+        summaryBgPaint.setStyle(Paint.Style.FILL);
     }
     
     /**
@@ -91,18 +139,32 @@ public class OverlayView extends View {
         setDetections(detections, new ArrayList<>());
     }
     
+    /**
+     * true: boxes show only compact index badges; labels are summarized at the side.
+     * false: each box gets a small label above the box.
+     */
+    public void setUseSideSummary(boolean useSideSummary) {
+        this.useSideSummary = useSideSummary;
+        invalidate();
+    }
+
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
         
         // 繪製一般物體偵測框
+        int index = 1;
         for (DetectionResult detection : detections) {
-            drawDetection(canvas, detection);
+            drawDetection(canvas, detection, index++);
         }
         
         // 繪製紅綠燈（特別標記）
         for (DetectionResult light : trafficLights) {
-            drawTrafficLight(canvas, light);
+            drawTrafficLight(canvas, light, index++);
+        }
+
+        if (useSideSummary) {
+            drawSideSummary(canvas);
         }
     }
     
@@ -126,7 +188,7 @@ public class OverlayView extends View {
         );
     }
     
-    private void drawDetection(Canvas canvas, DetectionResult detection) {
+    private void drawDetection(Canvas canvas, DetectionResult detection, int index) {
         RectF srcLocation = detection.getLocation();
         if (srcLocation == null) return;
         
@@ -136,65 +198,134 @@ public class OverlayView extends View {
         // 根據類型決定顏色
         int color = getColorForLabel(detection.getLabel());
         boxPaint.setColor(color);
+        boxFillPaint.setColor(color);
         textBgPaint.setColor(color);
         
-        // 繪製邊界框
+        // 繪製低干擾邊界框：淡色填滿 + 2dp 細框
+        canvas.drawRect(location, boxFillPaint);
         canvas.drawRect(location, boxPaint);
         
-        // ⚠️ 修復：標籤使用中文顯示
-        String chineseLabel = getChineseLabel(detection.getLabel());
-        String label = String.format("%s %.0f%%", 
-            chineseLabel, 
-            detection.getConfidence() * 100);
-        
-        float textWidth = textPaint.measureText(label);
-        float textX = Math.max(0, location.left);
-        float textY = Math.max(60, location.top);
-        
-        // 文字背景
-        canvas.drawRect(textX, textY - 50, 
-            textX + textWidth + 20, textY, 
-            textBgPaint);
-        
-        // 文字
-        canvas.drawText(label, textX + 10, textY - 10, textPaint);
+        if (useSideSummary) {
+            drawBadge(canvas, location, index, color);
+        } else {
+            drawLabelAboveBox(canvas, location, formatLabel(detection), color, false);
+        }
     }
     
-    private void drawTrafficLight(Canvas canvas, DetectionResult light) {
+    private void drawTrafficLight(Canvas canvas, DetectionResult light, int index) {
         RectF srcLocation = light.getLocation();
         if (srcLocation == null) return;
         
         // ⚠️ 修復：座標轉換
         RectF location = mapRectToView(srcLocation);
         
-        // 紅綠燈使用黃色粗框特別標記
+        // 紅綠燈用同樣細框呈現，靠顏色和摘要標示區分
         trafficLightPaint.setColor(Color.YELLOW);
-        trafficLightPaint.setStrokeWidth(8f);
+        canvas.drawRect(location, trafficLightFillPaint);
         canvas.drawRect(location, trafficLightPaint);
         
-        // ⚠️ 修復：標籤使用中文顯示
-        String chineseLabel = getChineseLabel(light.getLabel());
-        String label = String.format("🚦 %s %.0f%%", 
-            chineseLabel, 
-            light.getConfidence() * 100);
-        
+        if (useSideSummary) {
+            drawBadge(canvas, location, index, Color.YELLOW);
+        } else {
+            drawLabelAboveBox(canvas, location, formatLabel(light), Color.YELLOW, true);
+        }
+    }
+
+    private void drawBadge(Canvas canvas, RectF location, int index, int color) {
+        float cx = clamp(location.left + badgeRadius, badgeRadius, getWidth() - badgeRadius);
+        float cy = clamp(location.top + badgeRadius, badgeRadius, getHeight() - badgeRadius);
+
+        badgeBgPaint.setColor(color);
+        canvas.drawCircle(cx, cy, badgeRadius, badgeBgPaint);
+
+        Paint.FontMetrics metrics = badgeTextPaint.getFontMetrics();
+        float baseline = cy - (metrics.ascent + metrics.descent) / 2f;
+        canvas.drawText(String.valueOf(index), cx, baseline, badgeTextPaint);
+    }
+
+    private void drawLabelAboveBox(Canvas canvas, RectF location, String label, int color, boolean darkText) {
         float textWidth = textPaint.measureText(label);
-        float textX = Math.max(0, location.left);
-        float textY = Math.max(70, location.top);
+        Paint.FontMetrics metrics = textPaint.getFontMetrics();
+        float labelHeight = (metrics.descent - metrics.ascent) + labelPaddingV * 2;
+        float labelWidth = textWidth + labelPaddingH * 2;
+        float left = clamp(location.left, 0, Math.max(0, getWidth() - labelWidth));
+        float top = location.top - labelHeight - dp(2);
+
+        if (top < 0) {
+            top = Math.min(getHeight() - labelHeight, location.bottom + dp(2));
+        }
+
+        RectF bg = new RectF(left, top, left + labelWidth, top + labelHeight);
+        textBgPaint.setColor(color);
+        canvas.drawRoundRect(bg, labelCornerRadius, labelCornerRadius, textBgPaint);
+
+        textPaint.setColor(darkText ? Color.BLACK : Color.WHITE);
+        canvas.drawText(label, left + labelPaddingH, top + labelPaddingV - metrics.ascent, textPaint);
+        textPaint.setColor(Color.WHITE);
+    }
+
+    private void drawSideSummary(Canvas canvas) {
+        int totalCount = detections.size() + trafficLights.size();
+        if (totalCount == 0) return;
+
+        float maxWidth = 0;
+        List<String> lines = new ArrayList<>();
+        int index = 1;
+        for (DetectionResult detection : detections) {
+            lines.add(index++ + " " + formatLabel(detection));
+        }
+        for (DetectionResult light : trafficLights) {
+            lines.add(index++ + " " + formatLabel(light));
+        }
+
+        int hiddenCount = Math.max(0, lines.size() - maxSummaryItems);
+        if (hiddenCount > 0) {
+            lines = new ArrayList<>(lines.subList(0, maxSummaryItems));
+            lines.add("+" + hiddenCount);
+        }
+
+        for (String line : lines) {
+            maxWidth = Math.max(maxWidth, textPaint.measureText(line));
+        }
         
-        // 黃色背景
-        Paint yellowBg = new Paint();
-        yellowBg.setColor(Color.YELLOW);
-        yellowBg.setAlpha(220);
+        float width = Math.min(maxWidth + labelPaddingH * 2, getWidth() * 0.42f);
+        float height = lines.size() * summaryLineHeight + labelPaddingV * 2;
+        float left = getWidth() - width - summaryMargin;
+        float top = Math.min(summaryTopOffset, Math.max(summaryMargin, getHeight() - height - summaryMargin));
+        RectF bg = new RectF(left, top, left + width, top + height);
         
-        canvas.drawRect(textX, textY - 55, 
-            textX + textWidth + 20, textY + 5, 
-            yellowBg);
+        canvas.drawRoundRect(bg, labelCornerRadius, labelCornerRadius, summaryBgPaint);
         
-        // 黑色文字
-        textPaint.setColor(Color.BLACK);
-        canvas.drawText(label, textX + 10, textY - 10, textPaint);
-        textPaint.setColor(Color.WHITE); // 恢復
+        Paint.FontMetrics metrics = textPaint.getFontMetrics();
+        float baseline = top + labelPaddingV - metrics.ascent;
+        for (String line : lines) {
+            canvas.drawText(line, left + labelPaddingH, baseline, textPaint);
+            baseline += summaryLineHeight;
+        }
+    }
+
+    private String formatLabel(DetectionResult detection) {
+        return String.format("%s %.0f%%",
+            getChineseLabel(detection.getLabel()),
+            detection.getConfidence() * 100);
+    }
+
+    private float clamp(float value, float min, float max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    private float dp(float value) {
+        return TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP,
+            value,
+            getResources().getDisplayMetrics());
+    }
+
+    private float sp(float value) {
+        return TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_SP,
+            value,
+            getResources().getDisplayMetrics());
     }
     
     /**

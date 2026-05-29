@@ -26,8 +26,11 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:padding="16dp"
-        android:background="#AA000000"
+        android:paddingStart="12dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="8dp"
+        android:background="#77000000"
         app:layout_constraintTop_toTopOf="parent">
 
         <TextView
@@ -37,13 +40,13 @@
             android:layout_weight="1"
             android:text="安全偵測啟動中..."
             android:textColor="#4CAF50"
-            android:textSize="16sp"
+            android:textSize="14sp"
             android:textStyle="bold" />
 
         <ImageButton
             android:id="@+id/btnSettings"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@android:drawable/ic_menu_preferences"
             android:contentDescription="設定" />
@@ -55,8 +58,8 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="16dp"
-        android:background="#AA000000"
+        android:padding="10dp"
+        android:background="#77000000"
         app:layout_constraintBottom_toBottomOf="parent">
 
         <!-- 靈認度閥值調整 -->
@@ -65,7 +68,7 @@
             android:layout_height="wrap_content"
             android:text="靈認度閥值"
             android:textColor="#FFF"
-            android:textSize="14sp" />
+            android:textSize="13sp" />
 
         <SeekBar
             android:id="@+id/seekBarThreshold"
@@ -87,6 +90,7 @@
                 android:layout_height="wrap_content"
                 android:text="行人"
                 android:textColor="#FFF"
+                android:textSize="13sp"
                 android:checked="true" />
 
             <CheckBox
@@ -95,6 +99,7 @@
                 android:layout_height="wrap_content"
                 android:text="號誌"
                 android:textColor="#FFF"
+                android:textSize="13sp"
                 android:checked="true"
                 android:layout_marginStart="16dp" />
 
@@ -104,6 +109,7 @@
                 android:layout_height="wrap_content"
                 android:text="音效"
                 android:textColor="#FFF"
+                android:textSize="13sp"
                 android:checked="true"
                 android:layout_marginStart="16dp" />
 
@@ -113,6 +119,7 @@
                 android:layout_height="wrap_content"
                 android:text="語音"
                 android:textColor="#FFF"
+                android:textSize="13sp"
                 android:checked="true"
                 android:layout_marginStart="16dp" />
 
@@ -125,7 +132,7 @@
             android:layout_marginTop="8dp"
             android:text="偵測到: -"
             android:textColor="#FFF"
-            android:textSize="14sp" />
+            android:textSize="13sp" />
 
         <TextView
             android:id="@+id/tvDistance"
@@ -134,7 +141,7 @@
             android:layout_marginTop="4dp"
             android:text="距離: --"
             android:textColor="#FFF"
-            android:textSize="14sp" />
+            android:textSize="13sp" />
 
     </LinearLayout>
 
