@@ -43,31 +43,31 @@ public class ObjectDetectorWrapper {
     private static final float IOU_THRESHOLD = 0.40f;
     private static final int MAX_DETECTIONS = 50;  // 最大偵測數
     
-    // 只保留交通相關類別的 score 索引。
-    // 此模型輸出 91 個 score slot，索引對應 TensorFlow Object Detection API COCO id。
-    // 0 是背景/未使用，person 從 1 開始，部分 COCO id 會跳號。
+    // v2.7.0 修正：使用標準 COCO 80 類索引（0-based）
+    // 模型實際輸出 80 個類別分數，直接使用標準 COCO 索引
     private static final int[] VALID_CLASS_INDICES = {
-        1,   // person
-        2,   // bicycle
-        3,   // car
-        4,   // motorcycle
-        6,   // bus
-        7,   // train
-        8,   // truck
-        10,  // traffic light
-        13   // stop sign
+        0,   // person (行人)
+        1,   // bicycle (腳踏車)
+        2,   // car (汽車)
+        3,   // motorcycle (機車)
+        5,   // bus (公車)
+        6,   // train (火車)
+        7,   // truck (卡車)
+        9,   // traffic light (紅綠燈)
+        11   // stop sign (停止標誌)
     };
 
+    // v2.7.0 修正：COCO 80 類標準索引對應
     private static final Map<Integer, String> SCORE_CLASS_LABELS = new HashMap<Integer, String>() {{
-        put(1, "person");
-        put(2, "bicycle");
-        put(3, "car");
-        put(4, "motorcycle");
-        put(6, "bus");
-        put(7, "train");
-        put(8, "truck");
-        put(10, "traffic light");
-        put(13, "stop sign");
+        put(0, "person");
+        put(1, "bicycle");
+        put(2, "car");
+        put(3, "motorcycle");
+        put(5, "bus");
+        put(6, "train");
+        put(7, "truck");
+        put(9, "traffic light");
+        put(11, "stop sign");
     }};
     
     // 中文標籤對應（直接使用英文 label 轉中文）

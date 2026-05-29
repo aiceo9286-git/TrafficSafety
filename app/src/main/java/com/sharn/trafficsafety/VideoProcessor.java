@@ -128,7 +128,11 @@ public class VideoProcessor {
             Log.e(TAG, "Video processing failed", e);
             notifyError(callback, e);
         } finally {
-            retriever.release();
+            try {
+                retriever.release();
+            } catch (Exception e) {
+                Log.w(TAG, "Failed to release retriever", e);
+            }
         }
     }
 

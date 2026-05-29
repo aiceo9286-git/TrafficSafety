@@ -48,21 +48,25 @@ public class OverlayView extends View {
     private void init() {
         boxPaint = new Paint();
         boxPaint.setStyle(Paint.Style.STROKE);
-        boxPaint.setStrokeWidth(6f);
+        // v2.7.0 修正：從 6f 減小為 4f，減少視覺干擾
+        boxPaint.setStrokeWidth(4f);
         
         textPaint = new Paint();
         textPaint.setColor(Color.WHITE);
-        textPaint.setTextSize(36f);
+        // v2.7.0 修正：從 36f 減小為 28f，減少文字佔用的畫面空間
+        textPaint.setTextSize(28f);
         textPaint.setStyle(Paint.Style.FILL);
         textPaint.setAntiAlias(true);
         
         textBgPaint = new Paint();
         textBgPaint.setStyle(Paint.Style.FILL);
-        textBgPaint.setAlpha(200);
+        // v2.7.0 修正：從 200 減小為 160，降低背景遮擋
+        textBgPaint.setAlpha(160);
         
         trafficLightPaint = new Paint();
         trafficLightPaint.setStyle(Paint.Style.STROKE);
-        trafficLightPaint.setStrokeWidth(8f);
+        // v2.7.0 修正：從 8f 減小為 6f
+        trafficLightPaint.setStrokeWidth(6f);
     }
     
     /**

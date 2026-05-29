@@ -44,6 +44,13 @@ public final class AlertSystem {
     }
 
     public void triggerAlert(SafetyStatus status, AppState appState) {
+        // v2.7.0 修正：立即檢查開關狀態，如果都關閉則不觸發
+        if (!appState.isSoundAlertEnabled() && !appState.isVoiceAlertEnabled()) {
+            // 如果聲音和語音都關閉，只保留震動
+            vibrate(status.level);
+            return;
+        }
+        
         long now = SystemClock.elapsedRealtime();
         long cooldown = status.level == SafetyLevel.DANGER ? ALERT_COOLDOWN_DANGER : ALERT_COOLDOWN;
         if (now - lastAlertTime < cooldown) {
@@ -60,8 +67,28 @@ public final class AlertSystem {
         }
     }
 
-    public void speakTrafficLightWarning(String message) {
-        speak(message);
+    public void stopAllAlerts() {
+        // v2.7.0 新增：立即停止所有音效和語音
+        if (mediaPlayer != null && mediaPlayer.isPlaying()) {
+            mediaPlayer.stop();
+            try {
+                mediaPlayer.prepare();
+            } catch (Exception e) {
+                Log.w(TAG, "MediaPlayer prepare failed", e);
+            }
+        }
+        if (textToSpeech != null && textToSpeech.isSpeaking()) {
+            textToSpeech.stop();
+        }
+        // 移除所有待執行的音效延遲任務
+        mainHandler.removeCallbacksAndMessages(null);
+    }
+
+    public void speakTrafficLightWarning(String message, AppState appState) {
+        // v2.7.0 修正：檢查語音開關
+        if (appState.isVoiceAlertEnabled()) {
+            speak(message);
+        }
     }
 
     private void playSound(SafetyLevel level) {
